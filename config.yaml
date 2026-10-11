@@ -1,0 +1,77 @@
+name: "Flap de Giro Tecnohead"
+slug: "flap-giro-tecnohead"
+description: "Controle persistente de flap de giro Tecnohead por Global Caché iTach"
+version: "0.1.0-alpha.1"
+stage: experimental
+startup: application
+boot: auto
+
+arch:
+  - amd64
+  - aarch64
+
+image: ghcr.io/aoliveira07/home-assistant-flap-giro-tecnohead
+apparmor: true
+init: false
+host_network: true
+
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:television-shimmer
+panel_title: Flap Tecnohead
+
+services:
+  - mqtt:want
+
+options:
+  itach_host: ""
+  itach_port: 4998
+  itach_connaddr: "3"
+  itach_timeout: 3
+  ir_repeats: 1
+  full_travel_left_seconds: 37
+  full_travel_right_seconds: 37
+  opening_seconds: 5
+  closing_seconds: 5
+  open_repeats: 2
+  open_interval_seconds: 1
+  close_repeats: 2
+  close_interval_seconds: 1
+  homing_margin_seconds: 2
+  home_direction: left
+  tv_enabled: false
+  tv_entity_id: ""
+  tv_friendly_name: "Flap de Giro Tecnohead"
+  tv_initial_preset_id: null
+  tv_start_delay_seconds: 0
+  external_tv_on_behavior: open_restore
+  external_tv_off_behavior: home_close
+  tv_reconcile_interval_seconds: 5
+  discovery_prefix: homeassistant
+
+schema:
+  itach_host: str
+  itach_port: port
+  itach_connaddr: str
+  itach_timeout: float(0.1,30)
+  ir_repeats: int(1,10)
+  full_travel_left_seconds: float(0.1,600)
+  full_travel_right_seconds: float(0.1,600)
+  opening_seconds: float(0.1,120)
+  closing_seconds: float(0.1,120)
+  open_repeats: int(1,10)
+  open_interval_seconds: float(0,30)
+  close_repeats: int(1,10)
+  close_interval_seconds: float(0,30)
+  homing_margin_seconds: float(0,120)
+  home_direction: list(left|right)
+  tv_enabled: bool
+  tv_entity_id: str
+  tv_friendly_name: str
+  tv_initial_preset_id: int?
+  tv_start_delay_seconds: float(0,120)
+  external_tv_on_behavior: list(open_restore|ignore)
+  external_tv_off_behavior: list(home_close|ignore)
+  tv_reconcile_interval_seconds: float(1,300)
+  discovery_prefix: str
+

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flap de Giro Tecnohead</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand-mark">T</div>
+      <div><div class="eyebrow">TECNOHEAD · SMART HOUSE</div><h1>Flap de Giro</h1></div>
+      <div class="topbar-meta"><span id="app-version">—</span><span>Home Assistant App</span></div>
+    </header>
+
+    <nav class="tabs" aria-label="Navegação">
+      <button class="tab active" data-panel="dashboard">Operação</button>
+      <button class="tab" data-panel="settings">Configuração</button>
+      <button class="tab" data-panel="presets">Presets</button>
+      <button class="tab" data-panel="diagnostics">Diagnóstico</button>
+    </nav>
+
+    <main>
+      <section id="dashboard" class="panel active">
+        <div class="page-heading"><div><div class="eyebrow">CONTROLE PRINCIPAL</div><h2>Estado do conjunto</h2><p>TV real, mecanismo e referência de posição em um só lugar.</p></div><button id="refresh" class="button ghost">Atualizar</button></div>
+        <div class="status-grid">
+          <article class="status-card" id="tv-card"><span class="status-label">TV vinculada</span><strong id="tv-state">—</strong><small id="tv-detail">Configure uma entidade de TV</small></article>
+          <article class="status-card" id="flap-card"><span class="status-label">Flap</span><strong id="flap-state">—</strong><small id="flap-detail">—</small></article>
+          <article class="status-card"><span class="status-label">iTach</span><strong id="itach-state">—</strong><small id="itach-detail">—</small></article>
+          <article class="status-card warning" id="calibration-card"><span class="status-label">Referência</span><strong id="calibration-state">—</strong><small>HOME restaura o zero absoluto</small></article>
+        </div>
+        <div class="operation-layout">
+          <article class="card position-card">
+            <div class="card-heading"><div><span class="status-label">POSIÇÃO ESTIMADA</span><strong class="big-number" id="position">0%</strong></div><span class="chip" id="sequence">IDLE</span></div>
+            <div class="track"><div id="position-fill" class="track-fill"></div><div id="position-marker" class="track-marker"></div></div>
+            <div class="scale"><span>0 · HOME</span><span>Destino <b id="target-position">0%</b></span><span>100%</span></div>
+            <label class="range-label">Mover para <input id="position-slider" type="range" min="0" max="100" step="1" value="0"><output id="slider-value">0%</output></label>
+            <div class="main-actions"><button class="button primary" data-action="open">ABRIR</button><button class="button danger" data-action="stop">PARAR</button><button class="button primary" data-action="close">FECHAR</button></div>
+            <div class="secondary-actions"><button class="button ghost" data-action="left">← ESQUERDA</button><button class="button home" data-action="calibrate">HOME / CALIBRAR</button><button class="button ghost" data-action="right">DIREITA →</button></div>
+          </article>
+          <article class="card tv-card"><div class="card-heading"><div><span class="status-label">TV COMPOSTA</span><h3>Flap de Giro Tecnohead</h3></div><span class="tv-icon">▣</span></div><p class="muted">O power desta TV acompanha somente o estado real da entidade vinculada.</p><div class="tv-actions"><button class="button primary" data-action="turn_on">LIGAR TV</button><button class="button ghost" data-action="turn_off">DESLIGAR TV</button></div><label class="field">Preset de visualização<select id="preset-select"><option value="">Selecione…</option></select></label><button id="select-preset" class="button secondary full">Mover para preset</button></article>
+        </div>
+        <div class="card compact"><div class="card-heading"><div><span class="status-label">ÚLTIMO COMANDO</span><strong id="last-command">—</strong></div><div class="last-meta"><span id="last-command-time">—</span><span id="source">—</span></div></div><p id="uncertain-alert" class="alert hidden">A posição está incerta após uma interrupção. Execute HOME / Calibrar antes de fechar automaticamente.</p></div>
+      </section>
+
+      <section id="settings" class="panel">
+        <div class="page-heading"><div><div class="eyebrow">INSTALAÇÃO</div><h2>Configuração</h2><p>O perfil IR é fixo; os parâmetros abaixo pertencem a esta instalação.</p></div></div>
+        <form id="settings-form" class="card form-grid">
+          <h3>Global Caché iTach</h3><label class="field">IP / hostname<input name="itach_host" placeholder="192.168.0.46"></label><label class="field">Porta<input name="itach_port" type="number" min="1" max="65535"></label><label class="field">connaddr<input name="itach_connaddr" placeholder="3"></label><label class="field">Timeout (s)<input name="itach_timeout" type="number" step="0.1"></label><div class="form-span"><button class="button secondary" id="test-connection" type="button">Testar conexão</button><span id="connection-result" class="inline-result"></span></div>
+          <h3>Movimento e calibração</h3><label class="field">Curso esquerda → direita (s)<input name="full_travel_right_seconds" type="number" step="0.1"></label><label class="field">Curso direita → esquerda (s)<input name="full_travel_left_seconds" type="number" step="0.1"></label><label class="field">Abertura (s)<input name="opening_seconds" type="number" step="0.1"></label><label class="field">Fechamento (s)<input name="closing_seconds" type="number" step="0.1"></label><label class="field">Margem HOME (s)<input name="homing_margin_seconds" type="number" step="0.1"></label><label class="field">Direção HOME<select name="home_direction"><option value="left">Esquerda</option><option value="right">Direita</option></select></label><label class="field">Repetições Abrir<input name="open_repeats" type="number" min="1" max="10"></label><label class="field">Intervalo Abrir (s)<input name="open_interval_seconds" type="number" step="0.1"></label><label class="field">Repetições Fechar<input name="close_repeats" type="number" min="1" max="10"></label><label class="field">Intervalo Fechar (s)<input name="close_interval_seconds" type="number" step="0.1"></label>
+          <h3>TV vinculada / HomeKit</h3><label class="switch-row"><input name="tv_enabled" type="checkbox"><span>Habilitar TV composta</span></label><label class="field form-span">Entidade real <select id="tv-entity" name="tv_entity_id"><option value="">Carregando entidades…</option></select></label><label class="field">Nome amigável<input name="tv_friendly_name"></label><label class="field">Atraso ao ligar (s)<input name="tv_start_delay_seconds" type="number" step="0.1"></label><label class="field">TV ligada externamente<select name="external_tv_on_behavior"><option value="open_restore">Abrir e restaurar preset</option><option value="ignore">Não mover</option></select></label><label class="field">TV desligada externamente<select name="external_tv_off_behavior"><option value="home_close">HOME e fechar</option><option value="ignore">Não mover</option></select></label><div class="form-span form-actions"><button class="button primary" type="submit">Salvar configuração</button><span id="settings-result" class="inline-result"></span></div>
+        </form>
+      </section>
+
+      <section id="presets" class="panel"><div class="page-heading"><div><div class="eyebrow">POSIÇÕES DE VISUALIZAÇÃO</div><h2>Presets</h2><p>Os mesmos nomes aparecem como sources na TV/HomeKit.</p></div></div><div id="preset-list" class="preset-list"></div><form id="preset-form" class="card inline-form"><input name="name" placeholder="Nome do preset" required><input name="position" type="number" min="0" max="100" placeholder="Posição %" required><button class="button primary">Adicionar preset</button></form></section>
+
+      <section id="diagnostics" class="panel"><div class="page-heading"><div><div class="eyebrow">SUPORTE</div><h2>Diagnóstico</h2><p>Perfil IR, estado persistido, logs e testes individuais.</p></div><a class="button secondary" href="api/v1/diagnostics/export" download>Exportar diagnóstico</a></div><div class="diagnostic-grid"><article class="card"><h3>Testes IR</h3><div class="test-buttons"><button class="button secondary" data-test-ir="open">Abrir</button><button class="button secondary" data-test-ir="close">Fechar</button><button class="button danger" data-test-ir="stop">Parar</button><button class="button secondary" data-test-ir="left">Esquerda</button><button class="button secondary" data-test-ir="right">Direita</button></div><pre id="test-result">Nenhum teste executado.</pre></article><article class="card"><h3>Logs recentes</h3><pre id="logs">Carregando…</pre></article></div><pre id="diagnostics-json" class="diagnostics-output">Carregando…</pre></section>
+    </main>
+    <footer><span>Flap de Giro Tecnohead · Tecnohead Smart House</span><span id="footer-version">—</span></footer>
+  </div>
+  <div id="toast" class="toast"></div>
+  <script src="static/app.js"></script>
+</body>
+</html>
