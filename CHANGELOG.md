@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.5
+
+- Alterada a porta interna do App para `8100` para evitar conflito com o NeoControl quando ambos usam `host_network`.
+- Incluídas na publicação as traduções e opções em português do Brasil da versão anterior.
+
 ## 0.1.0-alpha.4
 
 - Adicionadas traduções em português do Brasil para todas as opções do App.

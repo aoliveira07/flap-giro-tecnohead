@@ -35,7 +35,7 @@ A posição é estimada por relógio monotônico durante o movimento. Um reiníc
 
 ```powershell
 $env:PYTHONPATH = "$PWD\flap-giro-tecnohead"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8099
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8100
 ```
 
 ## Documentação
