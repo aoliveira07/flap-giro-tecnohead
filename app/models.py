@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -16,7 +17,7 @@ def _normalize_choice(value: object, choices: dict[str, str]) -> object:
 class AppConfig(BaseModel):
     itach_host: str = ""
     itach_port: int = Field(default=4998, ge=1, le=65535)
-    itach_connaddr: str = "3"
+    itach_connaddr: str = "1:3"
     itach_timeout: float = Field(default=3.0, gt=0, le=30)
     ir_repeats: int = Field(default=1, ge=1, le=10)
     full_travel_left_seconds: float = Field(default=37.0, gt=0, le=600)
@@ -43,6 +44,22 @@ class AppConfig(BaseModel):
     @classmethod
     def strip_text(cls, value: object) -> str:
         return str(value or "").strip()
+
+    @field_validator("itach_connaddr", mode="after")
+    @classmethod
+    def normalize_itach_connaddr(cls, value: str) -> str:
+        """Use the Global Caché module:connector address format.
+
+        Older versions exposed only the connector number (for example ``3``).
+        A classic iTach identifies the same output as module 1, connector 3:
+        ``1:3``.
+        """
+        normalized = value.strip()
+        if normalized.isdigit():
+            normalized = f"1:{normalized}"
+        if not re.fullmatch(r"[1-9][0-9]*:[1-3]", normalized):
+            raise ValueError("connaddr deve usar o formato módulo:conector, por exemplo 1:3")
+        return normalized
 
     @field_validator("discovery_prefix", mode="before")
     @classmethod
@@ -115,6 +132,18 @@ class ConfigPatch(BaseModel):
     external_tv_off_behavior: Literal["home_close", "ignore"] | None = None
     tv_reconcile_interval_seconds: float | None = Field(default=None, ge=1, le=300)
     discovery_prefix: str | None = None
+
+    @field_validator("itach_connaddr", mode="before")
+    @classmethod
+    def normalize_itach_connaddr(cls, value: object) -> object:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if normalized.isdigit():
+            normalized = f"1:{normalized}"
+        if not re.fullmatch(r"[1-9][0-9]*:[1-3]", normalized):
+            raise ValueError("connaddr deve usar o formato módulo:conector, por exemplo 1:3")
+        return normalized
 
     @field_validator("home_direction", mode="before")
     @classmethod

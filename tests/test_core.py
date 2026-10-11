@@ -45,9 +45,9 @@ def test_profile_matches_handoff_source() -> None:
 
 def test_itach_conversion_is_deterministic() -> None:
     code = load_profile()["commands"]["open"]["pronto"]
-    message = pronto_to_itach(code, connaddr="3", repeat=2, command_id=7, offset=1)
+    message = pronto_to_itach(code, connaddr="1:3", repeat=2, command_id=7, offset=1)
 
-    assert message.startswith(b"sendir,3,7,38029,2,1,")
+    assert message.startswith(b"sendir,1:3,7,38029,2,1,")
     assert message.endswith(b"\r")
     assert message.count(b",") == 81
     assert pronto_frequency_hz(0x006D) == 38029
@@ -65,14 +65,14 @@ def test_itach_repetition_emits_separate_commands() -> None:
 
     assert result["repetitions"] == 2
     assert len(sent) == 2
-    assert all(b"sendir,3,1,38029,1,1," in command for command in sent)
+    assert all(b"sendir,1:3,1,38029,1,1," in command for command in sent)
 
 
 def test_defaults_capture_installation_constraints() -> None:
     config = AppConfig()
 
     assert config.itach_port == 4998
-    assert config.itach_connaddr == "3"
+    assert config.itach_connaddr == "1:3"
     assert config.full_travel_left_seconds == 37
     assert config.full_travel_right_seconds == 37
     assert config.open_repeats == 2
@@ -80,6 +80,16 @@ def test_defaults_capture_installation_constraints() -> None:
     assert config.close_repeats == 2
     assert config.close_interval_seconds == 1
     assert config.home_direction == "left"
+
+
+def test_legacy_itach_connector_number_is_upgraded_to_module_address() -> None:
+    assert AppConfig(itach_connaddr="3").itach_connaddr == "1:3"
+
+
+def test_config_patch_normalizes_itach_connector_number() -> None:
+    from app.models import ConfigPatch
+
+    assert ConfigPatch(itach_connaddr="3").itach_connaddr == "1:3"
 
 
 def test_portuguese_app_labels_normalize_to_internal_values() -> None:

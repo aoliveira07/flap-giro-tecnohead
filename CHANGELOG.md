@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.6
+
+- Corrige o endereço do conector IR do iTach para o formato Global Caché `1:3`.
+- Converte automaticamente a configuração antiga `3` para `1:3`.
+- Completa as traduções da configuração quando o idioma do Home Assistant está em `pt`.
+
 ## 0.1.0-alpha.5
 
 - Alterada a porta interna do App para `8100` para evitar conflito com o NeoControl quando ambos usam `host_network`.
