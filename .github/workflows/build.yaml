@@ -16,14 +16,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-          - arch: aarch64
-            platform: linux/arm64
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -33,14 +25,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push architecture image
+      - name: Build and push multi-architecture image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          platforms: ${{ matrix.platform }}
+          platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}-${{ matrix.arch }}
+          tags: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           build-args: |
             BUILD_VERSION=${{ github.ref_name }}
-            BUILD_ARCH=${{ matrix.arch }}
+            BUILD_ARCH=multi
