@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.2
+
+- Publicação multi-arquitetura corrigida para a tag consumida pelo Home Assistant.
+- Versão do App/runtime alinhada à versão do pacote Docker.
+
 ## 0.1.0-alpha.1
 
 - Primeira versão do App Flap de Giro Tecnohead.

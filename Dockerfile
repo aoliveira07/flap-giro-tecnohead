@@ -1,12 +1,14 @@
 FROM ghcr.io/home-assistant/base:latest
 
-ARG BUILD_VERSION=0.1.0-alpha.1
+ARG BUILD_VERSION=0.1.0-alpha.2
 ARG BUILD_ARCH=local
 
 LABEL \
   io.hass.version="${BUILD_VERSION}" \
   io.hass.type="app" \
   io.hass.arch="${BUILD_ARCH}"
+
+ENV APP_VERSION="${BUILD_VERSION}"
 
 RUN apk add --no-cache python3 py3-pip
 
