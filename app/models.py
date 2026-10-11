@@ -5,6 +5,14 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+def _normalize_choice(value: object, choices: dict[str, str]) -> object:
+    """Accept the Portuguese UI labels and the previous internal values."""
+    if value is None:
+        return None
+    normalized = str(value).strip().casefold()
+    return choices.get(normalized, value)
+
+
 class AppConfig(BaseModel):
     itach_host: str = ""
     itach_port: int = Field(default=4998, ge=1, le=65535)
@@ -41,6 +49,46 @@ class AppConfig(BaseModel):
     def normalize_prefix(cls, value: object) -> str:
         return str(value or "homeassistant").strip("/") or "homeassistant"
 
+    @field_validator("home_direction", mode="before")
+    @classmethod
+    def normalize_home_direction(cls, value: object) -> object:
+        return _normalize_choice(
+            value,
+            {
+                "esquerda": "left",
+                "direita": "right",
+                "left": "left",
+                "right": "right",
+            },
+        )
+
+    @field_validator("external_tv_on_behavior", mode="before")
+    @classmethod
+    def normalize_tv_on_behavior(cls, value: object) -> object:
+        return _normalize_choice(
+            value,
+            {
+                "abrir e restaurar": "open_restore",
+                "ignorar": "ignore",
+                "open_restore": "open_restore",
+                "ignore": "ignore",
+            },
+        )
+
+    @field_validator("external_tv_off_behavior", mode="before")
+    @classmethod
+    def normalize_tv_off_behavior(cls, value: object) -> object:
+        return _normalize_choice(
+            value,
+            {
+                "fechar no home": "home_close",
+                "home e fechar": "home_close",
+                "ignorar": "ignore",
+                "home_close": "home_close",
+                "ignore": "ignore",
+            },
+        )
+
 
 class ConfigPatch(BaseModel):
     itach_host: str | None = None
@@ -67,6 +115,46 @@ class ConfigPatch(BaseModel):
     external_tv_off_behavior: Literal["home_close", "ignore"] | None = None
     tv_reconcile_interval_seconds: float | None = Field(default=None, ge=1, le=300)
     discovery_prefix: str | None = None
+
+    @field_validator("home_direction", mode="before")
+    @classmethod
+    def normalize_home_direction(cls, value: object) -> object:
+        return _normalize_choice(
+            value,
+            {
+                "esquerda": "left",
+                "direita": "right",
+                "left": "left",
+                "right": "right",
+            },
+        )
+
+    @field_validator("external_tv_on_behavior", mode="before")
+    @classmethod
+    def normalize_tv_on_behavior(cls, value: object) -> object:
+        return _normalize_choice(
+            value,
+            {
+                "abrir e restaurar": "open_restore",
+                "ignorar": "ignore",
+                "open_restore": "open_restore",
+                "ignore": "ignore",
+            },
+        )
+
+    @field_validator("external_tv_off_behavior", mode="before")
+    @classmethod
+    def normalize_tv_off_behavior(cls, value: object) -> object:
+        return _normalize_choice(
+            value,
+            {
+                "fechar no home": "home_close",
+                "home e fechar": "home_close",
+                "ignorar": "ignore",
+                "home_close": "home_close",
+                "ignore": "ignore",
+            },
+        )
 
 
 class PositionRequest(BaseModel):

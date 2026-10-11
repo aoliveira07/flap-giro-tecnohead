@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.4
+
+- Adicionadas traduções em português do Brasil para todas as opções do App.
+- Valores dos seletores HOME e TV exibidos em português, mantendo compatibilidade com os valores internos anteriores.
+
 ## 0.1.0-alpha.3
 
 - Corrigida a opção opcional `tv_initial_preset_id` para não ser enviada como `null` no schema do Home Assistant.

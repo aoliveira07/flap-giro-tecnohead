@@ -82,6 +82,30 @@ def test_defaults_capture_installation_constraints() -> None:
     assert config.home_direction == "left"
 
 
+def test_portuguese_app_labels_normalize_to_internal_values() -> None:
+    config = AppConfig(
+        home_direction="Direita",
+        external_tv_on_behavior="Abrir e restaurar",
+        external_tv_off_behavior="Fechar no HOME",
+    )
+
+    assert config.home_direction == "right"
+    assert config.external_tv_on_behavior == "open_restore"
+    assert config.external_tv_off_behavior == "home_close"
+
+
+def test_previous_tv_values_remain_supported() -> None:
+    config = AppConfig(
+        home_direction="left",
+        external_tv_on_behavior="open_restore",
+        external_tv_off_behavior="home_close",
+    )
+
+    assert config.home_direction == "left"
+    assert config.external_tv_on_behavior == "open_restore"
+    assert config.external_tv_off_behavior == "home_close"
+
+
 def test_runtime_loads_initial_options_and_exposes_profile(tmp_path: Path) -> None:
     async def exercise() -> dict:
         runtime = Runtime(

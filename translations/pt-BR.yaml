@@ -1,0 +1,73 @@
+configuration:
+  itach_host:
+    name: Endereço do iTach
+    description: Endereço IP ou nome de host do Global Caché iTach.
+  itach_port:
+    name: Porta TCP do iTach
+    description: Porta TCP usada para conexão com o iTach.
+  itach_connaddr:
+    name: Endereço do conector IR
+    description: Identificador do conector IR do iTach que controla o Flap.
+  itach_timeout:
+    name: Tempo limite do iTach (s)
+    description: Tempo máximo de espera por uma resposta do iTach, em segundos.
+  ir_repeats:
+    name: Repetições dos comandos IR
+    description: Quantidade de vezes que cada comando infravermelho será enviado.
+  full_travel_left_seconds:
+    name: Curso total para a esquerda (s)
+    description: Tempo estimado para percorrer todo o curso no sentido esquerdo, em segundos.
+  full_travel_right_seconds:
+    name: Curso total para a direita (s)
+    description: Tempo estimado para percorrer todo o curso no sentido direito, em segundos.
+  opening_seconds:
+    name: Tempo de abertura (s)
+    description: Tempo de acionamento usado para abrir o Flap, em segundos.
+  closing_seconds:
+    name: Tempo de fechamento (s)
+    description: Tempo de acionamento usado para fechar o Flap, em segundos.
+  open_repeats:
+    name: Repetições para abrir
+    description: Quantidade de vezes que o comando Abrir será enviado.
+  open_interval_seconds:
+    name: Intervalo entre comandos de abertura (s)
+    description: Intervalo entre as repetições do comando Abrir, em segundos.
+  close_repeats:
+    name: Repetições para fechar
+    description: Quantidade de vezes que o comando Fechar será enviado.
+  close_interval_seconds:
+    name: Intervalo entre comandos de fechamento (s)
+    description: Intervalo entre as repetições do comando Fechar, em segundos.
+  homing_margin_seconds:
+    name: Margem de segurança do HOME (s)
+    description: Tempo adicional aplicado após atingir o fim de curso HOME, em segundos.
+  home_direction:
+    name: Direção do HOME
+    description: Sentido físico que leva o Flap até a posição HOME.
+  tv_enabled:
+    name: Integrar com a TV
+    description: Habilita a integração opcional com uma entidade de TV do Home Assistant.
+  tv_entity_id:
+    name: Entidade da TV
+    description: Identificador da entidade media_player da TV real no Home Assistant.
+  tv_friendly_name:
+    name: Nome amigável da TV
+    description: Nome exibido para a entidade composta de TV publicada pelo App.
+  tv_initial_preset_id:
+    name: Preset inicial da TV
+    description: Identificador opcional do preset usado ao restaurar a posição da TV.
+  tv_start_delay_seconds:
+    name: Atraso ao ligar a TV (s)
+    description: Tempo de espera antes de abrir o Flap quando a TV for ligada, em segundos.
+  external_tv_on_behavior:
+    name: Ação quando a TV for ligada
+    description: Define o que fazer quando a TV for ligada externamente.
+  external_tv_off_behavior:
+    name: Ação quando a TV for desligada
+    description: Define o que fazer quando a TV for desligada externamente.
+  tv_reconcile_interval_seconds:
+    name: Intervalo de sincronização com a TV (s)
+    description: Frequência de verificação do estado da TV, em segundos.
+  discovery_prefix:
+    name: Prefixo do MQTT Discovery
+    description: Prefixo usado para publicar os dispositivos e entidades MQTT Discovery.

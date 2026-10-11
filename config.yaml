@@ -1,7 +1,7 @@
 name: "Flap de Giro Tecnohead"
 slug: "flap-giro-tecnohead"
 description: "Controle persistente de flap de giro Tecnohead por Global Caché iTach"
-version: "0.1.0-alpha.3"
+version: "0.1.0-alpha.4"
 stage: experimental
 startup: application
 boot: auto
@@ -38,13 +38,13 @@ options:
   close_repeats: 2
   close_interval_seconds: 1
   homing_margin_seconds: 2
-  home_direction: left
+  home_direction: Esquerda
   tv_enabled: false
   tv_entity_id: ""
   tv_friendly_name: "Flap de Giro Tecnohead"
   tv_start_delay_seconds: 0
-  external_tv_on_behavior: open_restore
-  external_tv_off_behavior: home_close
+  external_tv_on_behavior: "Abrir e restaurar"
+  external_tv_off_behavior: "Fechar no HOME"
   tv_reconcile_interval_seconds: 5
   discovery_prefix: homeassistant
 
@@ -63,14 +63,14 @@ schema:
   close_repeats: int(1,10)
   close_interval_seconds: float(0,30)
   homing_margin_seconds: float(0,120)
-  home_direction: list(left|right)
+  home_direction: list(Esquerda|Direita)
   tv_enabled: bool
   tv_entity_id: str
   tv_friendly_name: str
   tv_initial_preset_id: int?
   tv_start_delay_seconds: float(0,120)
-  external_tv_on_behavior: list(open_restore|ignore)
-  external_tv_off_behavior: list(home_close|ignore)
+  external_tv_on_behavior: list(Abrir e restaurar|Ignorar)
+  external_tv_off_behavior: list(Fechar no HOME|Ignorar)
   tv_reconcile_interval_seconds: float(1,300)
   discovery_prefix: str
 
