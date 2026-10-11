@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-alpha.3
+
+- Corrigida a opção opcional `tv_initial_preset_id` para não ser enviada como `null` no schema do Home Assistant.
+
 ## 0.1.0-alpha.2
 
 - Publicação multi-arquitetura corrigida para a tag consumida pelo Home Assistant.

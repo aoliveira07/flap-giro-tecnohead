@@ -1,7 +1,7 @@
 name: "Flap de Giro Tecnohead"
 slug: "flap-giro-tecnohead"
 description: "Controle persistente de flap de giro Tecnohead por Global Caché iTach"
-version: "0.1.0-alpha.2"
+version: "0.1.0-alpha.3"
 stage: experimental
 startup: application
 boot: auto
@@ -42,7 +42,6 @@ options:
   tv_enabled: false
   tv_entity_id: ""
   tv_friendly_name: "Flap de Giro Tecnohead"
-  tv_initial_preset_id: null
   tv_start_delay_seconds: 0
   external_tv_on_behavior: open_restore
   external_tv_off_behavior: home_close
