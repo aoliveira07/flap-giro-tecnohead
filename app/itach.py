@@ -95,7 +95,7 @@ class ItachDriver:
     async def _send_once(self, command: bytes) -> str:
         if self.transport is not None:
             response = await self.transport(command)
-            return response.decode("utf-8", errors="replace") if isinstance(response, bytes) else str(response or "")
+            return self._validate_response(response)
         if not self.config.itach_host:
             raise ItachError("iTach host is not configured")
         try:
@@ -114,11 +114,19 @@ class ItachDriver:
                 response = ""
             writer.close()
             await writer.wait_closed()
-            if response.upper().startswith("ERR"):
-                raise ItachError(response.strip())
-            return response.strip()
+            return self._validate_response(response)
         except (OSError, asyncio.TimeoutError) as exc:
             raise ItachError(f"iTach connection failed: {exc}") from exc
+
+    @staticmethod
+    def _validate_response(response: bytes | str | None) -> str:
+        normalized = response.decode("utf-8", errors="replace") if isinstance(response, bytes) else str(response or "")
+        normalized = normalized.strip()
+        if normalized.upper().startswith("ERR"):
+            raise ItachError(normalized)
+        if normalized.upper().startswith("BUSYIR"):
+            raise ItachError(f"iTach ocupado: {normalized}")
+        return normalized
 
     async def test_connection(self) -> dict[str, Any]:
         if self.transport is not None:

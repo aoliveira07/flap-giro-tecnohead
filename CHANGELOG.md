@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.12
+
+- Aguarda a liberação do iTach depois do STOP antes de enviar Fechar.
+- Trata a resposta `busyIR` como falha real, evitando informar fechamento concluído quando o iTach rejeitou o comando.
+
 ## 0.1.0-alpha.11
 
 - Envia apenas um comando TCP `sendir` por ação.

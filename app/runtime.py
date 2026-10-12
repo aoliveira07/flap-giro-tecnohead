@@ -275,11 +275,19 @@ class Runtime:
             self.state.update({"position": 0.0, "target_position": 0.0, "rotation_state": "IDLE"})
             await self.persist_state()
         await self._send_ir("stop", source=source)
+        await self._wait_for_ir_settle()
         await self._send_ir("close", source=source, repeat=self.config.close_repeats, interval=self.config.close_interval_seconds)
         await asyncio.sleep(self.config.closing_seconds)
         self.state.update({"flap_state": "CLOSED", "rotation_state": "IDLE", "position": 0.0, "target_position": 0.0, "sequence": "IDLE"})
         await self.persist_state()
         await self.log(source, "closed", position=0)
+
+    async def _wait_for_ir_settle(self) -> None:
+        # iTach can answer busyIR for a new action immediately after STOP,
+        # while the previous repeated frame is still being emitted. The
+        # pause prevents CLOSE from being rejected without sending duplicates.
+        delay = min(2.0, max(0.25, float(self.config.close_interval_seconds)))
+        await asyncio.sleep(delay)
 
     async def stop(self, source: str = "UI") -> dict[str, Any]:
         async with self.control_lock:
@@ -403,6 +411,7 @@ class Runtime:
             await self._send_ir("stop", source=source)
             self.state.update({"position": 0.0, "target_position": 0.0, "movement_in_progress": False, "direction": None, "rotation_state": "IDLE", "calibration_state": "CALIBRATED"})
             await self.persist_state()
+            await self._wait_for_ir_settle()
             await self._send_ir("close", source=source, repeat=self.config.close_repeats, interval=self.config.close_interval_seconds)
             await asyncio.sleep(self.config.closing_seconds)
             self.state.update({"flap_state": "CLOSED", "sequence": "IDLE"})
@@ -445,6 +454,7 @@ class Runtime:
                 await self.ha.call_service("media_player", "turn_off", self.config.tv_entity_id)
             await self._move_to_now(0, source=source) if self.state.get("position", 0) > 0.01 else None
             await self._send_ir("stop", source=source)
+            await self._wait_for_ir_settle()
             await self._send_ir("close", source=source, repeat=self.config.close_repeats, interval=self.config.close_interval_seconds)
             await asyncio.sleep(self.config.closing_seconds)
             self.state.update({"position": 0.0, "target_position": 0.0, "flap_state": "CLOSED", "rotation_state": "IDLE", "sequence": "IDLE"})

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.home_assistant import HomeAssistantClient
-from app.itach import ItachDriver
+from app.itach import ItachDriver, ItachError
 from app.models import AppConfig
 from app.protocol import parse_pronto, pronto_frequency_hz, pronto_to_itach
 from app.profile import load_profile
@@ -97,6 +97,15 @@ def test_itach_protocol_repeat_has_safe_minimum_for_legacy_config() -> None:
     assert result["emissions"] == 1
     assert len(sent) == 1
     assert all(b"sendir,1:3,1,38029,3,1," in command for command in sent)
+
+
+def test_itach_busy_response_is_not_reported_as_success() -> None:
+    async def transport(command: bytes) -> bytes:
+        return b"busyIR,1:3,1"
+
+    driver = ItachDriver(AppConfig(), load_profile(), transport=transport)
+    with pytest.raises(ItachError, match="iTach ocupado"):
+        asyncio.run(driver.send_action("close", repeat=3, interval_seconds=0))
 
 
 def test_legacy_itach_connector_number_is_upgraded_to_module_address() -> None:
