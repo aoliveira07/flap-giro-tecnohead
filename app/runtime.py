@@ -25,13 +25,6 @@ DEFAULT_PRESETS = [
 MOVEMENT_STATES = {"OPENING", "CLOSING", "MOVING"}
 TV_ON_STATES = {"on", "playing", "idle", "paused", "buffering", "media_playing", "media_paused"}
 
-# Some iTach receivers are more reliable when the same IR frame is emitted
-# twice. Keep the redundancy at the runtime boundary so every command,
-# including STOP and directional commands, gets the same treatment.
-IR_REDUNDANCY_EMISSIONS = 2
-IR_REDUNDANCY_DELAY_SECONDS = 0.001
-
-
 def default_state() -> dict[str, Any]:
     return {
         "flap_state": "UNKNOWN",
@@ -166,11 +159,9 @@ class Runtime:
         action: str,
         *,
         source: str,
-        repeat: int = IR_REDUNDANCY_EMISSIONS,
-        interval: float = IR_REDUNDANCY_DELAY_SECONDS,
+        repeat: int | None = None,
+        interval: float = 0,
     ) -> dict[str, Any]:
-        repeat = max(IR_REDUNDANCY_EMISSIONS, int(repeat))
-        interval = interval if interval > 0 else IR_REDUNDANCY_DELAY_SECONDS
         requested_at = utc_now()
         self.state.update(
             {

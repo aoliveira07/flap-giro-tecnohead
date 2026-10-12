@@ -53,18 +53,19 @@ def test_itach_conversion_is_deterministic() -> None:
     assert pronto_frequency_hz(0x006D) == 38029
 
 
-def test_itach_repetition_emits_separate_commands() -> None:
+def test_itach_repetition_stays_inside_one_command() -> None:
     sent: list[bytes] = []
 
     async def transport(command: bytes) -> bytes:
         sent.append(command)
         return b"completeir,1\r"
 
-    driver = ItachDriver(AppConfig(itach_connaddr="3"), load_profile(), transport=transport)
-    result = asyncio.run(driver.send_action("open", repeat=2, interval_seconds=0))
+    driver = ItachDriver(AppConfig(itach_connaddr="3", ir_repeats=1), load_profile(), transport=transport)
+    result = asyncio.run(driver.send_action("open", repeat=3, interval_seconds=0))
 
-    assert result["repetitions"] == 2
-    assert len(sent) == 2
+    assert result["repetitions"] == 3
+    assert result["emissions"] == 1
+    assert len(sent) == 1
     assert all(b"sendir,1:3,1,38029,3,1," in command for command in sent)
 
 
@@ -91,9 +92,10 @@ def test_itach_protocol_repeat_has_safe_minimum_for_legacy_config() -> None:
         return b"completeir,1\r"
 
     driver = ItachDriver(AppConfig(ir_repeats=1), load_profile(), transport=transport)
-    asyncio.run(driver.send_action("right", repeat=2, interval_seconds=0))
+    result = asyncio.run(driver.send_action("right", repeat=3, interval_seconds=0))
 
-    assert len(sent) == 2
+    assert result["emissions"] == 1
+    assert len(sent) == 1
     assert all(b"sendir,1:3,1,38029,3,1," in command for command in sent)
 
 
@@ -136,11 +138,11 @@ def test_stop_synchronizes_target_with_estimated_position(tmp_path: Path) -> Non
     assert state["rotation_state"] == "IDLE"
 
 
-def test_runtime_repeats_default_ir_commands_with_short_delay(tmp_path: Path) -> None:
-    async def exercise() -> tuple[int, float]:
+def test_runtime_sends_one_command_to_driver(tmp_path: Path) -> None:
+    async def exercise() -> tuple[int | None, float]:
         runtime = Runtime(tmp_path, "0.1.0-test")
         await runtime.start()
-        calls: list[tuple[int, float]] = []
+        calls: list[tuple[int | None, float]] = []
 
         async def fake_send_action(action, *, repeat=None, interval_seconds=0, source="SYSTEM"):
             calls.append((repeat, interval_seconds))
@@ -154,8 +156,8 @@ def test_runtime_repeats_default_ir_commands_with_short_delay(tmp_path: Path) ->
             await runtime.stop()
 
     repeat, interval = asyncio.run(exercise())
-    assert repeat == 2
-    assert interval == 0.001
+    assert repeat is None
+    assert interval == 0
 
 
 def test_position_is_rejected_while_home_calibration_is_running(tmp_path: Path) -> None:

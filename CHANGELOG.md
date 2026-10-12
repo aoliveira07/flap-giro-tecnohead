@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.11
+
+- Envia apenas um comando TCP `sendir` por ação.
+- Mantém a repetição dentro do próprio campo de protocolo do iTach, evitando transmissões consecutivas do mesmo comando.
+
 ## 0.1.0-alpha.10
 
 - Reforça cada quadro `sendir` com no mínimo 3 repetições internas no iTach.

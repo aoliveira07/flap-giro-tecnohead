@@ -58,29 +58,25 @@ class ItachDriver:
         interval_seconds: float = 0,
         source: str = "SYSTEM",
     ) -> dict[str, Any]:
-        # ``repeat`` is the number of TCP emissions. The iTach repeat field
-        # remains the installation-level protocol setting, so an action such
-        # as Abrir twice really means two separate emissions with the
-        # configured interval between them.
-        command = self.build_command(action)
+        # ``repeat`` is the repetition inside one iTach sendir command. Do
+        # not emit the same TCP command multiple times: the receiver handles
+        # the repeated IR frames from the protocol field itself.
+        del interval_seconds
+        command = self.build_command(action, repeat=repeat)
+        protocol_repeat = int(command.decode("ascii").split(",", 5)[4])
         async with self.lock:
             started = time.monotonic()
-            records: list[dict[str, Any]] = []
             try:
-                count = repeat or 1
-                for index in range(count):
-                    response = await self._send_once(command)
-                    records.append({"index": index + 1, "response": response})
-                    if index + 1 < count and interval_seconds:
-                        await asyncio.sleep(interval_seconds)
+                response = await self._send_once(command)
                 result = {
                     "ok": True,
                     "action": action,
                     "source": source,
                     "command": command.decode("ascii").strip(),
-                    "repetitions": count,
+                    "repetitions": protocol_repeat,
+                    "emissions": 1,
                     "duration_ms": round((time.monotonic() - started) * 1000, 1),
-                    "responses": records,
+                    "responses": [{"index": 1, "response": response}],
                 }
                 self.last_result = result
                 self.last_error = None
