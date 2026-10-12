@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.21
+
+- removeu os controles de ligar/desligar da TV composta no aplicativo;
+- atualiza imediatamente no MQTT a lista de presets exposta como fontes da TV composta;
+- mantém a publicação de descoberta e estado para o Home Assistant após alterações nos presets.
+
 ## 0.1.0-alpha.20
 
 - Adiciona `icon.png` oficial do app, com monitor e estrelas, para substituir o ícone padrão de peça no Home Assistant.

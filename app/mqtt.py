@@ -35,6 +35,7 @@ class MqttBridge:
         self.password = os.getenv("MQTT_PASSWORD") or None
         self.base = "flap_giro_tecnohead"
         self.task: asyncio.Task | None = None
+        self.client: Any | None = None
         self.connected = False
         self.last_error: str | None = None
         self.last_connected: str | None = None
@@ -64,6 +65,7 @@ class MqttBridge:
                     password=self.password,
                     identifier="flap-giro-tecnohead",
                 ) as client:
+                    self.client = client
                     self.connected = True
                     self.last_connected = datetime.now(UTC).isoformat()
                     self.last_error = None
@@ -95,6 +97,7 @@ class MqttBridge:
                 LOGGER.warning("MQTT disconnected: %s", exc)
             finally:
                 self.connected = False
+                self.client = None
             await asyncio.sleep(10)
 
     async def _publish(self, client: Any, topic: str, value: Any, *, retain: bool = True) -> None:
@@ -110,7 +113,7 @@ class MqttBridge:
             "name": "Flap de Giro Tecnohead",
             "manufacturer": "Tecnohead",
             "model": "Flap de Giro",
-            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.20"),
+            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.21"),
         }
         media = {
             "name": "Flap de Giro Tecnohead",
@@ -205,9 +208,22 @@ class MqttBridge:
             await self._publish(client, f"{self.base}/state/{key}", value)
 
     async def publish_current_state(self) -> None:
-        # The next connected cycle publishes again; this method is intentionally
-        # lightweight so command paths never block on an unavailable broker.
-        return None
+        """Republish discovery and state after a preset/configuration change.
+
+        Home Assistant keeps the media player's ``source_list`` in the retained
+        discovery payload. Waiting for a reconnect leaves the entity showing
+        stale sources, so publish both retained payloads immediately whenever
+        the MQTT connection is alive.
+        """
+        client = self.client
+        if not self.connected or client is None:
+            return
+        try:
+            await self._publish_discovery(client)
+            await self._publish_state(client)
+        except (MqttError, OSError, ValueError) as exc:
+            self.last_error = str(exc)
+            LOGGER.warning("MQTT state refresh failed: %s", exc)
 
     def status(self) -> dict[str, Any]:
         return {

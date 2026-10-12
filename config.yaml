@@ -1,7 +1,7 @@
 name: "Flap de Giro Tecnohead"
 slug: "flap-giro-tecnohead"
 description: "Controle persistente de flap de giro Tecnohead por Global Caché iTach"
-version: "0.1.0-alpha.20"
+version: "0.1.0-alpha.21"
 stage: experimental
 startup: application
 boot: auto

@@ -10,6 +10,7 @@ import pytest
 from app.home_assistant import HomeAssistantClient
 from app.itach import ItachDriver, ItachError
 from app.models import AppConfig
+from app.mqtt import MqttBridge
 from app.protocol import parse_pronto, pronto_frequency_hz, pronto_to_itach
 from app.profile import load_profile
 from app.runtime import Runtime
@@ -167,6 +168,38 @@ def test_runtime_rejects_commands_during_ir_cooldown(tmp_path: Path) -> None:
             await runtime.mqtt.stop()
 
     asyncio.run(exercise())
+
+
+def test_mqtt_refresh_publishes_current_preset_sources() -> None:
+    async def exercise() -> dict[str, object]:
+        published: list[tuple[str, str]] = []
+
+        class FakeClient:
+            async def publish(self, topic, payload, qos=0, retain=False):
+                published.append((str(topic), payload.decode() if isinstance(payload, bytes) else str(payload)))
+
+        async def snapshot() -> dict[str, object]:
+            return {
+                "state": {"tv_power_state": "off", "source": "Piscina"},
+                "presets": [{"name": "Cozinha", "position": 30}, {"name": "Piscina", "position": 100}],
+                "itach": {"configured": True},
+            }
+
+        async def on_command(kind: str, payload: str) -> None:
+            return None
+
+        bridge = MqttBridge("homeassistant", snapshot, on_command)
+        bridge.client = FakeClient()
+        bridge.connected = True
+        await bridge.publish_current_state()
+
+        discovery = next(payload for topic, payload in published if topic.endswith("/media_player/flap_giro_tecnohead/config"))
+        attributes = next(payload for topic, payload in published if topic == "flap_giro_tecnohead/attributes")
+        return {"discovery": json.loads(discovery), "attributes": json.loads(attributes)}
+
+    result = asyncio.run(exercise())
+    assert result["discovery"]["source_list"] == ["Cozinha", "Piscina"]
+    assert result["attributes"]["source_list"] == ["Cozinha", "Piscina"]
 
 
 def test_legacy_itach_connector_number_is_upgraded_to_module_address() -> None:

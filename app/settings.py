@@ -20,5 +20,5 @@ def data_dir() -> Path:
 
 
 def app_version() -> str:
-    return os.getenv("APP_VERSION", "0.1.0-alpha.20")
+    return os.getenv("APP_VERSION", "0.1.0-alpha.21")
 
