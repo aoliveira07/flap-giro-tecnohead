@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.19
+
+- Habilita o acesso à API do Home Assistant para listar entidades `media_player` no seletor de TV.
+- Mostra a indisponibilidade da API no seletor e tenta carregar os televisores novamente automaticamente.
+
 ## 0.1.0-alpha.18
 
 - Atualiza a identidade visual para o padrão azul-petróleo do LG Local Thing.
