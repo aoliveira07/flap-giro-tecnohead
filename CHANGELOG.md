@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.7
+
+- Faz os botões Direita e Esquerda percorrerem até `100%` e `0%`, respectivamente, em vez de avançarem em incrementos de `10%`.
+- Ao pressionar Parar, sincroniza a meta do slider com a posição estimada alcançada.
+
 ## 0.1.0-alpha.6
 
 - Corrige o endereço do conector IR do iTach para o formato Global Caché `1:3`.

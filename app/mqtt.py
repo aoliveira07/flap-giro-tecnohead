@@ -110,7 +110,7 @@ class MqttBridge:
             "name": "Flap de Giro Tecnohead",
             "manufacturer": "Tecnohead",
             "model": "Flap de Giro",
-            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.6"),
+            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.7"),
         }
         media = {
             "name": "Flap de Giro Tecnohead",

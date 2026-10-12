@@ -12,7 +12,7 @@ Preencha na tela de configuração:
 
 - iTach: `192.168.0.46`
 - porta TCP: `4998`
-- `connaddr`: `3`
+- `connaddr`: `1:3`
 - curso total inicial: `37` segundos
 - HOME: direção `Esquerda` e margem adicional inicialmente `2` segundos
 

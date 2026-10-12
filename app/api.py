@@ -58,13 +58,13 @@ async def stop_flap(request: Request):
 @router.post("/rotate/left")
 async def rotate_left(request: Request):
     runtime = runtime_from(request)
-    return await runtime.position(max(0, runtime.state["position"] - 10), source="UI")
+    return await runtime.position(0, source="UI")
 
 
 @router.post("/rotate/right")
 async def rotate_right(request: Request):
     runtime = runtime_from(request)
-    return await runtime.position(min(100, runtime.state["position"] + 10), source="UI")
+    return await runtime.position(100, source="UI")
 
 
 @router.post("/position")

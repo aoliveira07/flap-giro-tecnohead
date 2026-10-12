@@ -260,7 +260,18 @@ class Runtime:
                 await self._send_ir("stop", source=source)
             except ItachError:
                 pass
-            self.state.update({"movement_in_progress": False, "rotation_state": "IDLE", "sequence": "IDLE"})
+            # Stopping mid-course makes the current estimated position the new
+            # target. The UI slider is driven by target_position, so leaving
+            # the previous endpoint here would show a stale command target.
+            current_position = float(self.state.get("position", 0.0))
+            self.state.update(
+                {
+                    "movement_in_progress": False,
+                    "rotation_state": "IDLE",
+                    "sequence": "IDLE",
+                    "target_position": current_position,
+                }
+            )
             await self.persist_state()
         return dict(self.state)
 
@@ -496,7 +507,7 @@ class Runtime:
             if item:
                 await self.preset(int(item["id"]), source)
         elif value.upper() in {"PRESS", "ON", "1"}:
-            actions = {"open": self.open, "close": self.close, "left": lambda s: self.position(max(0, self.state["position"] - 10), s), "right": lambda s: self.position(min(100, self.state["position"] + 10), s), "stop": self.stop, "calibrate": self.calibrate}
+            actions = {"open": self.open, "close": self.close, "left": lambda s: self.position(0, s), "right": lambda s: self.position(100, s), "stop": self.stop, "calibrate": self.calibrate}
             action = actions.get(kind)
             if action:
                 await action(source)

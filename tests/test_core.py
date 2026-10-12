@@ -92,6 +92,35 @@ def test_config_patch_normalizes_itach_connector_number() -> None:
     assert ConfigPatch(itach_connaddr="3").itach_connaddr == "1:3"
 
 
+def test_stop_synchronizes_target_with_estimated_position(tmp_path: Path) -> None:
+    async def exercise() -> dict:
+        runtime = Runtime(tmp_path, "0.1.0-test")
+        await runtime.start()
+
+        async def fake_send_ir(*args, **kwargs):
+            return {"ok": True}
+
+        runtime._send_ir = fake_send_ir
+        runtime.state.update(
+            {
+                "position": 43.7,
+                "target_position": 100.0,
+                "movement_in_progress": True,
+                "rotation_state": "MOVING_RIGHT",
+            }
+        )
+        try:
+            return await runtime.stop()
+        finally:
+            await runtime.stop()
+
+    state = asyncio.run(exercise())
+    assert state["position"] == 43.7
+    assert state["target_position"] == 43.7
+    assert state["movement_in_progress"] is False
+    assert state["rotation_state"] == "IDLE"
+
+
 def test_portuguese_app_labels_normalize_to_internal_values() -> None:
     config = AppConfig(
         home_direction="Direita",
