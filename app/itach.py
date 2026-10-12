@@ -37,13 +37,19 @@ class ItachDriver:
     def update_config(self, config: AppConfig) -> None:
         self.config = config
 
-    def build_command(self, action: str, *, repeat: int | None = None) -> bytes:
+    def build_command(
+        self,
+        action: str,
+        *,
+        repeat: int | None = None,
+        minimum_protocol_repeats: int = MIN_IR_PROTOCOL_REPEATS,
+    ) -> bytes:
         try:
             pronto = self.profile["commands"][action]["pronto"]
         except KeyError as exc:
             raise ProtocolError(f"Unknown IR action: {action}") from exc
         configured_repeat = self.config.ir_repeats if repeat is None else repeat
-        effective_repeat = max(MIN_IR_PROTOCOL_REPEATS, int(configured_repeat))
+        effective_repeat = max(minimum_protocol_repeats, int(configured_repeat))
         return pronto_to_itach(
             pronto,
             connaddr=self.config.itach_connaddr,
@@ -57,26 +63,37 @@ class ItachDriver:
         repeat: int | None = None,
         interval_seconds: float = 0,
         source: str = "SYSTEM",
+        emissions: int = 1,
+        minimum_protocol_repeats: int = MIN_IR_PROTOCOL_REPEATS,
     ) -> dict[str, Any]:
-        # ``repeat`` is the repetition inside one iTach sendir command. Do
-        # not emit the same TCP command multiple times: the receiver handles
-        # the repeated IR frames from the protocol field itself.
-        del interval_seconds
-        command = self.build_command(action, repeat=repeat)
+        # ``repeat`` is the repetition inside one iTach sendir command. By
+        # default one TCP emission is used; the close compatibility path is
+        # the only caller that explicitly requests two emissions.
+        command = self.build_command(
+            action,
+            repeat=repeat,
+            minimum_protocol_repeats=minimum_protocol_repeats,
+        )
         protocol_repeat = int(command.decode("ascii").split(",", 5)[4])
+        emission_count = max(1, int(emissions))
         async with self.lock:
             started = time.monotonic()
             try:
-                response = await self._send_once(command)
+                responses: list[dict[str, Any]] = []
+                for index in range(emission_count):
+                    response = await self._send_once(command)
+                    responses.append({"index": index + 1, "response": response})
+                    if index + 1 < emission_count and interval_seconds > 0:
+                        await asyncio.sleep(interval_seconds)
                 result = {
                     "ok": True,
                     "action": action,
                     "source": source,
                     "command": command.decode("ascii").strip(),
                     "repetitions": protocol_repeat,
-                    "emissions": 1,
+                    "emissions": emission_count,
                     "duration_ms": round((time.monotonic() - started) * 1000, 1),
-                    "responses": [{"index": 1, "response": response}],
+                    "responses": responses,
                 }
                 self.last_result = result
                 self.last_error = None

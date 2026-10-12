@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.13
+
+- Mantém o Fechar com o Pronto Hex original (`repeat=1`) e duas emissões espaçadas.
+- Mantém os demais comandos em uma única emissão com repetição interna do protocolo.
+- Aplica `busyIR` como falha para qualquer comando do iTach.
+
 ## 0.1.0-alpha.12
 
 - Aguarda a liberação do iTach depois do STOP antes de enviar Fechar.

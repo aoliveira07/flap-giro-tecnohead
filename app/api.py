@@ -52,7 +52,10 @@ async def close_flap(request: Request):
 
 @router.post("/stop")
 async def stop_flap(request: Request):
-    return await runtime_from(request).stop()
+    try:
+        return await runtime_from(request).stop()
+    except Exception as exc:
+        raise operation_error(exc) from exc
 
 
 @router.post("/rotate/left")

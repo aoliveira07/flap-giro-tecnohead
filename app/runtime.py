@@ -161,6 +161,8 @@ class Runtime:
         source: str,
         repeat: int | None = None,
         interval: float = 0,
+        emissions: int = 1,
+        minimum_protocol_repeats: int = 3,
     ) -> dict[str, Any]:
         requested_at = utc_now()
         self.state.update(
@@ -177,6 +179,8 @@ class Runtime:
                 repeat=repeat,
                 interval_seconds=interval,
                 source=source,
+                emissions=emissions,
+                minimum_protocol_repeats=minimum_protocol_repeats,
             )
             self.state["last_command_effective"] = action
             await self.persist_state()
@@ -276,7 +280,7 @@ class Runtime:
             await self.persist_state()
         await self._send_ir("stop", source=source)
         await self._wait_for_ir_settle()
-        await self._send_ir("close", source=source, repeat=self.config.close_repeats, interval=self.config.close_interval_seconds)
+        await self._send_close_ir(source)
         await asyncio.sleep(self.config.closing_seconds)
         self.state.update({"flap_state": "CLOSED", "rotation_state": "IDLE", "position": 0.0, "target_position": 0.0, "sequence": "IDLE"})
         await self.persist_state()
@@ -289,6 +293,19 @@ class Runtime:
         delay = min(2.0, max(0.25, float(self.config.close_interval_seconds)))
         await asyncio.sleep(delay)
 
+    async def _send_close_ir(self, source: str) -> dict[str, Any]:
+        # The close command is the original learned frame: one protocol
+        # repeat, emitted twice with the configured gap. Other actions use
+        # one sendir command with the stronger protocol-level repetition.
+        return await self._send_ir(
+            "close",
+            source=source,
+            repeat=1,
+            interval=self.config.close_interval_seconds,
+            emissions=2,
+            minimum_protocol_repeats=1,
+        )
+
     async def stop(self, source: str = "UI") -> dict[str, Any]:
         async with self.control_lock:
             await self._cancel_active(send_stop=False)
@@ -296,7 +313,16 @@ class Runtime:
             try:
                 await self._send_ir("stop", source=source)
             except ItachError:
-                pass
+                self.state.update(
+                    {
+                        "flap_state": "ERROR",
+                        "rotation_state": "UNKNOWN",
+                        "sequence": "ERROR",
+                        "movement_in_progress": False,
+                    }
+                )
+                await self.persist_state()
+                raise
             # Stopping mid-course makes the current estimated position the new
             # target. The UI slider is driven by target_position, so leaving
             # the previous endpoint here would show a stale command target.
@@ -412,7 +438,7 @@ class Runtime:
             self.state.update({"position": 0.0, "target_position": 0.0, "movement_in_progress": False, "direction": None, "rotation_state": "IDLE", "calibration_state": "CALIBRATED"})
             await self.persist_state()
             await self._wait_for_ir_settle()
-            await self._send_ir("close", source=source, repeat=self.config.close_repeats, interval=self.config.close_interval_seconds)
+            await self._send_close_ir(source)
             await asyncio.sleep(self.config.closing_seconds)
             self.state.update({"flap_state": "CLOSED", "sequence": "IDLE"})
             await self.persist_state()
@@ -455,7 +481,7 @@ class Runtime:
             await self._move_to_now(0, source=source) if self.state.get("position", 0) > 0.01 else None
             await self._send_ir("stop", source=source)
             await self._wait_for_ir_settle()
-            await self._send_ir("close", source=source, repeat=self.config.close_repeats, interval=self.config.close_interval_seconds)
+            await self._send_close_ir(source)
             await asyncio.sleep(self.config.closing_seconds)
             self.state.update({"position": 0.0, "target_position": 0.0, "flap_state": "CLOSED", "rotation_state": "IDLE", "sequence": "IDLE"})
             await self.persist_state()

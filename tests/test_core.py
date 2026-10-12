@@ -99,6 +99,30 @@ def test_itach_protocol_repeat_has_safe_minimum_for_legacy_config() -> None:
     assert all(b"sendir,1:3,1,38029,3,1," in command for command in sent)
 
 
+def test_close_uses_original_protocol_frame_with_two_emissions() -> None:
+    sent: list[bytes] = []
+
+    async def transport(command: bytes) -> bytes:
+        sent.append(command)
+        return b"completeir,1\r"
+
+    driver = ItachDriver(AppConfig(ir_repeats=3), load_profile(), transport=transport)
+    result = asyncio.run(
+        driver.send_action(
+            "close",
+            repeat=1,
+            interval_seconds=0,
+            emissions=2,
+            minimum_protocol_repeats=1,
+        )
+    )
+
+    assert result["repetitions"] == 1
+    assert result["emissions"] == 2
+    assert len(sent) == 2
+    assert all(b"sendir,1:3,1,38029,1,1," in command for command in sent)
+
+
 def test_itach_busy_response_is_not_reported_as_success() -> None:
     async def transport(command: bytes) -> bytes:
         return b"busyIR,1:3,1"
@@ -147,13 +171,42 @@ def test_stop_synchronizes_target_with_estimated_position(tmp_path: Path) -> Non
     assert state["rotation_state"] == "IDLE"
 
 
+def test_stop_surfaces_ir_failure_and_marks_error(tmp_path: Path) -> None:
+    async def exercise() -> dict:
+        runtime = Runtime(tmp_path, "0.1.0-test")
+        await runtime.start()
+
+        async def failed_send_ir(*args, **kwargs):
+            raise ItachError("iTach ocupado: busyIR,1:3,1")
+
+        runtime._send_ir = failed_send_ir
+        try:
+            with pytest.raises(ItachError, match="iTach ocupado"):
+                await runtime.stop()
+            return runtime.state
+        finally:
+            await runtime.mqtt.stop()
+
+    state = asyncio.run(exercise())
+    assert state["flap_state"] == "ERROR"
+    assert state["sequence"] == "ERROR"
+
+
 def test_runtime_sends_one_command_to_driver(tmp_path: Path) -> None:
     async def exercise() -> tuple[int | None, float]:
         runtime = Runtime(tmp_path, "0.1.0-test")
         await runtime.start()
         calls: list[tuple[int | None, float]] = []
 
-        async def fake_send_action(action, *, repeat=None, interval_seconds=0, source="SYSTEM"):
+        async def fake_send_action(
+            action,
+            *,
+            repeat=None,
+            interval_seconds=0,
+            source="SYSTEM",
+            emissions=1,
+            minimum_protocol_repeats=3,
+        ):
             calls.append((repeat, interval_seconds))
             return {"ok": True}
 
