@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.18
+
+- Atualiza a identidade visual para o padrão azul-petróleo do LG Local Thing.
+- Adiciona o ícone Flap Tecnohead no cabeçalho e reorganiza os comandos com símbolos de mídia.
+- Move o histórico para depois da TV e HOME / Calibrar para o último elemento da tela.
+
 ## 0.1.0-alpha.17
 
 - Reorganiza o painel de operação com HOME / Calibrar acima do histórico.
