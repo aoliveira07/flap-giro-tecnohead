@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.20
+
+- Adiciona `icon.png` oficial do app, com monitor e estrelas, para substituir o ícone padrão de peça no Home Assistant.
+- Mantém o mesmo símbolo no cabeçalho interno do aplicativo.
+
 ## 0.1.0-alpha.19
 
 - Habilita o acesso à API do Home Assistant para listar entidades `media_player` no seletor de TV.
