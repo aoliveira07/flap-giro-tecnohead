@@ -1,7 +1,7 @@
 name: "Flap de Giro Tecnohead"
 slug: "flap-giro-tecnohead"
 description: "Controle persistente de flap de giro Tecnohead por Global Caché iTach"
-version: "0.1.0-alpha.9"
+version: "0.1.0-alpha.10"
 stage: experimental
 startup: application
 boot: auto
@@ -28,7 +28,7 @@ options:
   itach_port: 4998
   itach_connaddr: "1:3"
   itach_timeout: 3
-  ir_repeats: 1
+  ir_repeats: 3
   full_travel_left_seconds: 37
   full_travel_right_seconds: 37
   opening_seconds: 5

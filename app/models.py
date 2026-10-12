@@ -19,7 +19,7 @@ class AppConfig(BaseModel):
     itach_port: int = Field(default=4998, ge=1, le=65535)
     itach_connaddr: str = "1:3"
     itach_timeout: float = Field(default=3.0, gt=0, le=30)
-    ir_repeats: int = Field(default=1, ge=1, le=10)
+    ir_repeats: int = Field(default=3, ge=1, le=10)
     full_travel_left_seconds: float = Field(default=37.0, gt=0, le=600)
     full_travel_right_seconds: float = Field(default=37.0, gt=0, le=600)
     opening_seconds: float = Field(default=5.0, gt=0, le=120)

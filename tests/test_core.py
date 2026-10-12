@@ -65,7 +65,7 @@ def test_itach_repetition_emits_separate_commands() -> None:
 
     assert result["repetitions"] == 2
     assert len(sent) == 2
-    assert all(b"sendir,1:3,1,38029,1,1," in command for command in sent)
+    assert all(b"sendir,1:3,1,38029,3,1," in command for command in sent)
 
 
 def test_defaults_capture_installation_constraints() -> None:
@@ -80,6 +80,21 @@ def test_defaults_capture_installation_constraints() -> None:
     assert config.close_repeats == 2
     assert config.close_interval_seconds == 1
     assert config.home_direction == "left"
+    assert config.ir_repeats == 3
+
+
+def test_itach_protocol_repeat_has_safe_minimum_for_legacy_config() -> None:
+    sent: list[bytes] = []
+
+    async def transport(command: bytes) -> bytes:
+        sent.append(command)
+        return b"completeir,1\r"
+
+    driver = ItachDriver(AppConfig(ir_repeats=1), load_profile(), transport=transport)
+    asyncio.run(driver.send_action("right", repeat=2, interval_seconds=0))
+
+    assert len(sent) == 2
+    assert all(b"sendir,1:3,1,38029,3,1," in command for command in sent)
 
 
 def test_legacy_itach_connector_number_is_upgraded_to_module_address() -> None:

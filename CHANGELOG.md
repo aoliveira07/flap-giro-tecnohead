@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.10
+
+- Reforça cada quadro `sendir` com no mínimo 3 repetições internas no iTach.
+- Mantém as 2 emissões TCP redundantes já existentes, mesmo quando a configuração antiga ainda está salva com `ir_repeats: 1`.
+- Aumenta a probabilidade de recepção dos comandos Direita, Esquerda e Parar pelo receptor IR.
+
 ## 0.1.0-alpha.9
 
 - Preserva a calibração HOME concluída ao abrir novamente o mecanismo.

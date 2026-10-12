@@ -11,6 +11,10 @@ from app.protocol import ProtocolError, pronto_to_itach
 
 LOGGER = logging.getLogger("flap_giro_tecnohead.itach")
 
+# The stored option may still be 1 from an earlier installation. Keep a
+# protocol-level minimum so every sendir frame contains repeated IR pulses.
+MIN_IR_PROTOCOL_REPEATS = 3
+
 
 class ItachError(RuntimeError):
     pass
@@ -38,10 +42,12 @@ class ItachDriver:
             pronto = self.profile["commands"][action]["pronto"]
         except KeyError as exc:
             raise ProtocolError(f"Unknown IR action: {action}") from exc
+        configured_repeat = self.config.ir_repeats if repeat is None else repeat
+        effective_repeat = max(MIN_IR_PROTOCOL_REPEATS, int(configured_repeat))
         return pronto_to_itach(
             pronto,
             connaddr=self.config.itach_connaddr,
-            repeat=repeat or self.config.ir_repeats,
+            repeat=effective_repeat,
         )
 
     async def send_action(
@@ -56,7 +62,7 @@ class ItachDriver:
         # remains the installation-level protocol setting, so an action such
         # as Abrir twice really means two separate emissions with the
         # configured interval between them.
-        command = self.build_command(action, repeat=self.config.ir_repeats)
+        command = self.build_command(action)
         async with self.lock:
             started = time.monotonic()
             records: list[dict[str, Any]] = []
