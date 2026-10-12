@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.9
+
+- Preserva a calibração HOME concluída ao abrir novamente o mecanismo.
+- A posição só volta a ser incerta quando há interrupção ou falha real durante movimento ou calibração.
+
 ## 0.1.0-alpha.8
 
 - Mantém o HOME/calibração protegido contra novos movimentos até a conclusão e preserva o zero calibrado.

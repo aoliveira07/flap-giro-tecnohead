@@ -260,7 +260,10 @@ class Runtime:
         return await self._start_operation("TURNING_ON_MECHANISM", lambda: self._open_sequence(source))
 
     async def _open_sequence(self, source: str) -> None:
-        self.state.update({"flap_state": "OPENING", "rotation_state": "IDLE", "calibration_state": "UNCERTAIN"})
+        # Opening the mechanism does not change the calibrated rotation
+        # reference. Preserve CALIBRATED after HOME so a later OPEN does not
+        # incorrectly ask the user to calibrate again.
+        self.state.update({"flap_state": "OPENING", "rotation_state": "IDLE"})
         await self.persist_state()
         await self._send_ir("open", source=source, repeat=self.config.open_repeats, interval=self.config.open_interval_seconds)
         await asyncio.sleep(self.config.opening_seconds)

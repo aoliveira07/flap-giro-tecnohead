@@ -157,6 +157,25 @@ def test_position_is_rejected_while_home_calibration_is_running(tmp_path: Path) 
     asyncio.run(exercise())
 
 
+def test_open_preserves_completed_home_calibration(tmp_path: Path) -> None:
+    async def exercise() -> str:
+        runtime = Runtime(tmp_path, "0.1.0-test", initial_config={"opening_seconds": 0.1})
+        await runtime.start()
+        runtime.state.update({"calibration_state": "CALIBRATED", "flap_state": "CLOSED"})
+
+        async def fake_send_ir(*args, **kwargs):
+            return {"ok": True}
+
+        runtime._send_ir = fake_send_ir
+        try:
+            await runtime._open_sequence("TEST")
+            return runtime.state["calibration_state"]
+        finally:
+            await runtime.stop()
+
+    assert asyncio.run(exercise()) == "CALIBRATED"
+
+
 def test_portuguese_app_labels_normalize_to_internal_values() -> None:
     config = AppConfig(
         home_direction="Direita",
