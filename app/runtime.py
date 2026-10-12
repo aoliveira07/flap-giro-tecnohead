@@ -265,9 +265,11 @@ class Runtime:
         # Opening the mechanism does not change the calibrated rotation
         # reference. Preserve CALIBRATED after HOME so a later OPEN does not
         # incorrectly ask the user to calibrate again.
+        await self._send_ir("open", source=source, repeat=self.config.open_repeats, interval=self.config.open_interval_seconds)
+        # The iTach acknowledgement is the point at which the mechanism is
+        # allowed to enter its timed movement state.
         self.state.update({"flap_state": "OPENING", "rotation_state": "IDLE"})
         await self.persist_state()
-        await self._send_ir("open", source=source, repeat=self.config.open_repeats, interval=self.config.open_interval_seconds)
         await asyncio.sleep(self.config.opening_seconds)
         self.state.update({"flap_state": "OPEN", "sequence": "IDLE"})
         await self.persist_state()
@@ -316,8 +318,27 @@ class Runtime:
     async def stop(self, source: str = "UI") -> dict[str, Any]:
         async with self.control_lock:
             self.ensure_ir_ready()
+            motion_snapshot = {
+                "active": bool(self.state.get("movement_in_progress")),
+                "position": float(self.state.get("position", 0.0)),
+                "start_position": float(self.state.get("movement_start_position", self.state.get("position", 0.0))),
+                "started_monotonic": self.state.get("movement_started_monotonic"),
+                "direction": self.state.get("direction"),
+            }
             await self._cancel_active(send_stop=False)
-            self._update_position_from_clock()
+            if motion_snapshot["active"] and motion_snapshot["started_monotonic"] and motion_snapshot["direction"] in {"left", "right"}:
+                # Keep the original motion clock alive while STOP is waiting
+                # for the iTach acknowledgement. The estimated position must
+                # stop only after that acknowledgement arrives.
+                self.state.update(
+                    {
+                        "position": motion_snapshot["position"],
+                        "movement_in_progress": True,
+                        "movement_start_position": motion_snapshot["start_position"],
+                        "movement_started_monotonic": motion_snapshot["started_monotonic"],
+                        "direction": motion_snapshot["direction"],
+                    }
+                )
             try:
                 await self._send_ir("stop", source=source)
             except ItachError:
@@ -331,6 +352,8 @@ class Runtime:
                 )
                 await self.persist_state()
                 raise
+            if motion_snapshot["active"] and motion_snapshot["started_monotonic"] and motion_snapshot["direction"] in {"left", "right"}:
+                self._update_position_from_clock()
             # Stopping mid-course makes the current estimated position the new
             # target. The UI slider is driven by target_position, so leaving
             # the previous endpoint here would show a stale command target.
@@ -363,8 +386,11 @@ class Runtime:
             {
                 "target_position": target,
                 "movement_in_progress": False,
-                "movement_started_at": utc_now(),
+                "movement_started_at": None,
                 "movement_start_position": current,
+                "movement_started_monotonic": None,
+                "direction": None,
+                "rotation_state": "IDLE",
             }
         )
         if abs(target - current) < 0.05:
@@ -377,13 +403,24 @@ class Runtime:
         self.state.update(
             {
                 "direction": direction,
-                "rotation_state": "MOVING_RIGHT" if direction == "right" else "MOVING_LEFT",
-                "movement_in_progress": True,
-                "movement_started_monotonic": time.monotonic(),
+                "rotation_state": "IDLE",
+                "movement_in_progress": False,
+                "movement_started_monotonic": None,
             }
         )
         await self.persist_state()
         await self._send_ir(direction, source=source)
+        # Do not start the estimated movement clock at button press time.
+        # The iTach response above confirms that the command was accepted.
+        self.state.update(
+            {
+                "rotation_state": "MOVING_RIGHT" if direction == "right" else "MOVING_LEFT",
+                "movement_in_progress": True,
+                "movement_started_at": utc_now(),
+                "movement_started_monotonic": time.monotonic(),
+            }
+        )
+        await self.persist_state()
         try:
             deadline = time.monotonic() + duration
             while True:
@@ -394,13 +431,17 @@ class Runtime:
                 self._update_position_from_clock()
                 await self.persist_state()
             self.state["position"] = target
+            await self._send_ir("stop", source=source)
+            self.state.update({"rotation_state": "IDLE", "position": target, "target_position": target})
+            await self.persist_state()
+        except Exception:
+            self.state.update({"rotation_state": "UNKNOWN", "movement_in_progress": False, "direction": None})
+            await self.persist_state()
+            raise
         finally:
             self.state["movement_in_progress"] = False
             self.state["direction"] = None
             await self.persist_state()
-        await self._send_ir("stop", source=source)
-        self.state.update({"rotation_state": "IDLE", "position": target, "target_position": target})
-        await self.persist_state()
 
     async def position(self, target: float, source: str = "UI") -> dict[str, Any]:
         if self.state.get("calibration_state") == "CALIBRATING" or self.state.get("sequence") == "CALIBRATING":
@@ -438,9 +479,11 @@ class Runtime:
             await self.persist_state()
             await self._open_sequence(source)
             direction = self.config.home_direction
-            self.state.update({"direction": direction, "rotation_state": "MOVING_LEFT" if direction == "left" else "MOVING_RIGHT", "movement_in_progress": True, "movement_started_monotonic": time.monotonic(), "movement_start_position": float(self.state.get("position", 0)), "target_position": 0.0})
+            self.state.update({"direction": direction, "rotation_state": "IDLE", "movement_in_progress": False, "movement_started_at": None, "movement_started_monotonic": None, "movement_start_position": float(self.state.get("position", 0)), "target_position": 0.0})
             await self.persist_state()
             await self._send_ir(direction, source=source)
+            self.state.update({"rotation_state": "MOVING_LEFT" if direction == "left" else "MOVING_RIGHT", "movement_in_progress": True, "movement_started_at": utc_now(), "movement_started_monotonic": time.monotonic()})
+            await self.persist_state()
             await asyncio.sleep((self.config.full_travel_left_seconds if direction == "left" else self.config.full_travel_right_seconds) + self.config.homing_margin_seconds)
             await self._send_ir("stop", source=source)
             self.state.update({"position": 0.0, "target_position": 0.0, "movement_in_progress": False, "direction": None, "rotation_state": "IDLE", "calibration_state": "CALIBRATED"})

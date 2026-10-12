@@ -133,6 +133,15 @@ def test_itach_busy_response_is_not_reported_as_success() -> None:
         asyncio.run(driver.send_action("close", repeat=3, interval_seconds=0))
 
 
+def test_itach_missing_ack_is_not_reported_as_success() -> None:
+    async def transport(command: bytes) -> bytes:
+        return b""
+
+    driver = ItachDriver(AppConfig(), load_profile(), transport=transport)
+    with pytest.raises(ItachError, match="não confirmou"):
+        asyncio.run(driver.send_action("right", repeat=3, interval_seconds=0))
+
+
 def test_itach_reports_safe_cooldown_after_transmission() -> None:
     async def transport(command: bytes) -> bytes:
         return b"completeir,1\r"
@@ -197,6 +206,43 @@ def test_stop_synchronizes_target_with_estimated_position(tmp_path: Path) -> Non
     assert state["target_position"] == 43.7
     assert state["movement_in_progress"] is False
     assert state["rotation_state"] == "IDLE"
+
+
+def test_position_clock_starts_only_after_itach_ack(tmp_path: Path) -> None:
+    async def exercise() -> tuple[list[tuple[str, bool, object]], dict]:
+        runtime = Runtime(
+            tmp_path,
+            "0.1.0-test",
+            initial_config={"full_travel_right_seconds": 0.01},
+        )
+        await runtime.start()
+        observations: list[tuple[str, bool, object]] = []
+
+        async def fake_send_ir(action, *args, **kwargs):
+            observations.append(
+                (
+                    action,
+                    bool(runtime.state.get("movement_in_progress")),
+                    runtime.state.get("movement_started_monotonic"),
+                )
+            )
+            return {"ok": True}
+
+        runtime._send_ir = fake_send_ir
+        try:
+            await runtime._move_to_now(100, source="TEST")
+            return observations, dict(runtime.state)
+        finally:
+            await runtime.stop()
+
+    observations, state = asyncio.run(exercise())
+    assert observations[0][0] == "right"
+    assert observations[0][1] is False
+    assert observations[0][2] is None
+    assert observations[1][0] == "stop"
+    assert observations[1][1] is True
+    assert observations[1][2] is not None
+    assert state["movement_in_progress"] is False
 
 
 def test_stop_surfaces_ir_failure_and_marks_error(tmp_path: Path) -> None:

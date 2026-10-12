@@ -168,7 +168,6 @@ class ItachDriver:
                 data = await asyncio.wait_for(reader.read(256), timeout=min(self.config.itach_timeout, 0.5))
                 response = data.decode("utf-8", errors="replace")
             except asyncio.TimeoutError:
-                # Some iTach firmware versions acknowledge only asynchronously.
                 response = ""
             writer.close()
             await writer.wait_closed()
@@ -180,10 +179,14 @@ class ItachDriver:
     def _validate_response(response: bytes | str | None) -> str:
         normalized = response.decode("utf-8", errors="replace") if isinstance(response, bytes) else str(response or "")
         normalized = normalized.strip()
+        if not normalized:
+            raise ItachError("iTach não confirmou o recebimento do comando")
         if normalized.upper().startswith("ERR"):
             raise ItachError(normalized)
         if normalized.upper().startswith("BUSYIR"):
             raise ItachError(f"iTach ocupado: {normalized}")
+        if not normalized.upper().startswith("COMPLETEIR"):
+            raise ItachError(f"Resposta inesperada do iTach: {normalized}")
         return normalized
 
     async def test_connection(self) -> dict[str, Any]:

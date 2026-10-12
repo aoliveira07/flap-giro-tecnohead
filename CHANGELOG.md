@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.15
+
+- Inicia o relógio da posição estimada somente depois da confirmação `completeir` do iTach.
+- Mantém a posição em espera durante o envio de Direita/Esquerda e só finaliza Parar após a confirmação do iTach.
+- Aguarda a confirmação do iTach antes de iniciar os tempos de Abrir e Fechar.
+
 ## 0.1.0-alpha.14
 
 - Calcula o tempo seguro de transmissão do quadro IR e impede colisões rápidas no iTach.
