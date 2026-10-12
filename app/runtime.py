@@ -25,6 +25,12 @@ DEFAULT_PRESETS = [
 MOVEMENT_STATES = {"OPENING", "CLOSING", "MOVING"}
 TV_ON_STATES = {"on", "playing", "idle", "paused", "buffering", "media_playing", "media_paused"}
 
+# Some iTach receivers are more reliable when the same IR frame is emitted
+# twice. Keep the redundancy at the runtime boundary so every command,
+# including STOP and directional commands, gets the same treatment.
+IR_REDUNDANCY_EMISSIONS = 2
+IR_REDUNDANCY_DELAY_SECONDS = 0.001
+
 
 def default_state() -> dict[str, Any]:
     return {
@@ -155,7 +161,16 @@ class Runtime:
         await self.persist_state()
         return self.config.model_dump()
 
-    async def _send_ir(self, action: str, *, source: str, repeat: int = 1, interval: float = 0) -> dict[str, Any]:
+    async def _send_ir(
+        self,
+        action: str,
+        *,
+        source: str,
+        repeat: int = IR_REDUNDANCY_EMISSIONS,
+        interval: float = IR_REDUNDANCY_DELAY_SECONDS,
+    ) -> dict[str, Any]:
+        repeat = max(IR_REDUNDANCY_EMISSIONS, int(repeat))
+        interval = interval if interval > 0 else IR_REDUNDANCY_DELAY_SECONDS
         requested_at = utc_now()
         self.state.update(
             {
@@ -186,10 +201,21 @@ class Runtime:
     async def _cancel_active(self, *, send_stop: bool = True) -> None:
         task = self.operation_task
         if task and not task.done() and task is not asyncio.current_task():
+            was_calibrating = self.state.get("calibration_state") == "CALIBRATING" or self.state.get("sequence") == "CALIBRATING"
             self._update_position_from_clock()
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
             self.operation_task = None
+            if was_calibrating:
+                self.state.update(
+                    {
+                        "calibration_state": "UNCERTAIN",
+                        "movement_in_progress": False,
+                        "direction": None,
+                        "rotation_state": "IDLE",
+                    }
+                )
+                await self.persist_state()
             if send_stop:
                 try:
                     await self._send_ir("stop", source="SYSTEM")
@@ -216,6 +242,15 @@ class Runtime:
         except Exception as exc:  # pragma: no cover - surfaced in status and diagnostics
             self.record_error(f"{name} failed: {exc}")
             self.state["sequence"] = "ERROR"
+            if name == "CALIBRATING":
+                self.state.update(
+                    {
+                        "calibration_state": "UNCERTAIN",
+                        "movement_in_progress": False,
+                        "direction": None,
+                        "rotation_state": "IDLE",
+                    }
+                )
             await self.persist_state()
         finally:
             if self.operation_task is asyncio.current_task():
@@ -332,6 +367,8 @@ class Runtime:
         await self.persist_state()
 
     async def position(self, target: float, source: str = "UI") -> dict[str, Any]:
+        if self.state.get("calibration_state") == "CALIBRATING" or self.state.get("sequence") == "CALIBRATING":
+            raise ValueError("A calibração HOME ainda está em andamento. Aguarde a conclusão antes de mover o Flap.")
         if self.state.get("calibration_state") == "UNCERTAIN" and target == 0:
             raise ValueError("A posição está incerta. Execute HOME / Calibrar antes de fechar para 0%.")
 

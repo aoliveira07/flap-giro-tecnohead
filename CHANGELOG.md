@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-alpha.8
+
+- Mantém o HOME/calibração protegido contra novos movimentos até a conclusão e preserva o zero calibrado.
+- Atualiza a posição real da interface aproximadamente a cada segundo.
+- Retorna uma mensagem operacional clara quando um movimento é solicitado durante a calibração.
+- Envia cada comando IR pelo menos duas vezes, com intervalo de 1 ms, incluindo Direita, Esquerda e Parar.
+
 ## 0.1.0-alpha.7
 
 - Faz os botões Direita e Esquerda percorrerem até `100%` e `0%`, respectivamente, em vez de avançarem em incrementos de `10%`.

@@ -121,6 +121,42 @@ def test_stop_synchronizes_target_with_estimated_position(tmp_path: Path) -> Non
     assert state["rotation_state"] == "IDLE"
 
 
+def test_runtime_repeats_default_ir_commands_with_short_delay(tmp_path: Path) -> None:
+    async def exercise() -> tuple[int, float]:
+        runtime = Runtime(tmp_path, "0.1.0-test")
+        await runtime.start()
+        calls: list[tuple[int, float]] = []
+
+        async def fake_send_action(action, *, repeat=None, interval_seconds=0, source="SYSTEM"):
+            calls.append((repeat, interval_seconds))
+            return {"ok": True}
+
+        runtime.driver.send_action = fake_send_action
+        try:
+            await runtime._send_ir("stop", source="TEST")
+            return calls[0]
+        finally:
+            await runtime.stop()
+
+    repeat, interval = asyncio.run(exercise())
+    assert repeat == 2
+    assert interval == 0.001
+
+
+def test_position_is_rejected_while_home_calibration_is_running(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        runtime = Runtime(tmp_path, "0.1.0-test")
+        await runtime.start()
+        runtime.state.update({"calibration_state": "CALIBRATING", "sequence": "CALIBRATING"})
+        try:
+            with pytest.raises(ValueError, match="calibração HOME ainda está em andamento"):
+                await runtime.position(100)
+        finally:
+            await runtime.stop()
+
+    asyncio.run(exercise())
+
+
 def test_portuguese_app_labels_normalize_to_internal_values() -> None:
     config = AppConfig(
         home_direction="Direita",
