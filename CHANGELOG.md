@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.16
+
+- Aguarda até o timeout configurado do iTach pela confirmação `completeir`; a resposta real do equipamento chega após aproximadamente 1 segundo.
+- Evita marcar comandos válidos como falha e iniciar a posição estimada antes da confirmação.
+
 ## 0.1.0-alpha.15
 
 - Inicia o relógio da posição estimada somente depois da confirmação `completeir` do iTach.

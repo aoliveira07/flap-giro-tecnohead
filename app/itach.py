@@ -165,7 +165,10 @@ class ItachDriver:
             await asyncio.wait_for(writer.drain(), timeout=self.config.itach_timeout)
             response = ""
             try:
-                data = await asyncio.wait_for(reader.read(256), timeout=min(self.config.itach_timeout, 0.5))
+                # The tested iTach takes about one second to return
+                # ``completeir`` for this learned frame. Do not convert a
+                # valid but delayed acknowledgement into a false failure.
+                data = await asyncio.wait_for(reader.read(256), timeout=self.config.itach_timeout)
                 response = data.decode("utf-8", errors="replace")
             except asyncio.TimeoutError:
                 response = ""
