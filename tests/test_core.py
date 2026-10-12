@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
@@ -130,6 +131,33 @@ def test_itach_busy_response_is_not_reported_as_success() -> None:
     driver = ItachDriver(AppConfig(), load_profile(), transport=transport)
     with pytest.raises(ItachError, match="iTach ocupado"):
         asyncio.run(driver.send_action("close", repeat=3, interval_seconds=0))
+
+
+def test_itach_reports_safe_cooldown_after_transmission() -> None:
+    async def transport(command: bytes) -> bytes:
+        return b"completeir,1\r"
+
+    driver = ItachDriver(AppConfig(ir_repeats=3), load_profile(), transport=transport)
+    result = asyncio.run(driver.send_action("right"))
+    status = driver.status()
+
+    assert result["estimated_transmission_seconds"] == pytest.approx(0.978, abs=0.01)
+    assert status["busy"] is True
+    assert status["busy_remaining_seconds"] > 0
+
+
+def test_runtime_rejects_commands_during_ir_cooldown(tmp_path: Path) -> None:
+    async def exercise() -> None:
+        runtime = Runtime(tmp_path, "0.1.0-test")
+        await runtime.start()
+        runtime.driver.busy_until = time.monotonic() + 1
+        try:
+            with pytest.raises(ValueError, match="Aguarde"):
+                await runtime.open()
+        finally:
+            await runtime.mqtt.stop()
+
+    asyncio.run(exercise())
 
 
 def test_legacy_itach_connector_number_is_upgraded_to_module_address() -> None:

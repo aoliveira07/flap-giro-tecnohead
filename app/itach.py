@@ -7,13 +7,15 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.models import AppConfig
-from app.protocol import ProtocolError, pronto_to_itach
+from app.protocol import ProtocolError, parse_pronto, pronto_frequency_hz, pronto_to_itach
 
 LOGGER = logging.getLogger("flap_giro_tecnohead.itach")
 
 # The stored option may still be 1 from an earlier installation. Keep a
 # protocol-level minimum so every sendir frame contains repeated IR pulses.
 MIN_IR_PROTOCOL_REPEATS = 3
+IR_SETTLE_MARGIN_SECONDS = 0.2
+IR_READY_EPSILON_SECONDS = 0.05
 
 
 class ItachError(RuntimeError):
@@ -33,6 +35,11 @@ class ItachDriver:
         self.lock = asyncio.Lock()
         self.last_result: dict[str, Any] | None = None
         self.last_error: str | None = None
+        # The iTach can acknowledge sendir before the complete IR frame has
+        # left the emitter. Keep a local reservation so a fast second request
+        # cannot collide with the previous transmission.
+        self.busy_until = 0.0
+        self.command_active = False
 
     def update_config(self, config: AppConfig) -> None:
         self.config = config
@@ -77,7 +84,16 @@ class ItachDriver:
         protocol_repeat = int(command.decode("ascii").split(",", 5)[4])
         emission_count = max(1, int(emissions))
         async with self.lock:
+            await self._wait_until_ready()
             started = time.monotonic()
+            estimated_transmission_seconds = self._estimate_transmission_seconds(action, protocol_repeat)
+            reservation_seconds = (
+                estimated_transmission_seconds * emission_count
+                + max(0.0, interval_seconds) * max(0, emission_count - 1)
+                + IR_SETTLE_MARGIN_SECONDS * emission_count
+            )
+            self.command_active = True
+            self.busy_until = time.monotonic() + reservation_seconds
             try:
                 responses: list[dict[str, Any]] = []
                 for index in range(emission_count):
@@ -92,6 +108,8 @@ class ItachDriver:
                     "command": command.decode("ascii").strip(),
                     "repetitions": protocol_repeat,
                     "emissions": emission_count,
+                    "estimated_transmission_seconds": round(estimated_transmission_seconds, 3),
+                    "safety_margin_seconds": IR_SETTLE_MARGIN_SECONDS,
                     "duration_ms": round((time.monotonic() - started) * 1000, 1),
                     "responses": responses,
                 }
@@ -108,6 +126,29 @@ class ItachDriver:
                     "duration_ms": round((time.monotonic() - started) * 1000, 1),
                 }
                 raise ItachError(str(exc)) from exc
+            finally:
+                self.command_active = False
+                self.busy_until = max(self.busy_until, time.monotonic() + IR_SETTLE_MARGIN_SECONDS)
+
+    def _estimate_transmission_seconds(self, action: str, protocol_repeat: int) -> float:
+        try:
+            pronto = self.profile["commands"][action]["pronto"]
+        except KeyError as exc:
+            raise ProtocolError(f"Unknown IR action: {action}") from exc
+        code = parse_pronto(pronto)
+        frame_seconds = sum(code.timings) / pronto_frequency_hz(code.frequency_word)
+        return frame_seconds * protocol_repeat
+
+    async def _wait_until_ready(self) -> None:
+        remaining = self.busy_remaining_seconds()
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
+    def busy_remaining_seconds(self) -> float:
+        return max(0.0, self.busy_until - time.monotonic())
+
+    def is_busy(self) -> bool:
+        return self.command_active or self.busy_remaining_seconds() > IR_READY_EPSILON_SECONDS
 
     async def _send_once(self, command: bytes) -> str:
         if self.transport is not None:
@@ -171,6 +212,7 @@ class ItachDriver:
             return {"ok": False, "error": str(exc)}
 
     def status(self) -> dict[str, Any]:
+        busy_remaining = self.busy_remaining_seconds()
         return {
             "configured": bool(self.config.itach_host),
             "host": self.config.itach_host,
@@ -178,5 +220,7 @@ class ItachDriver:
             "connaddr": self.config.itach_connaddr,
             "last_result": self.last_result,
             "last_error": self.last_error,
+            "busy": self.command_active or busy_remaining > IR_READY_EPSILON_SECONDS,
+            "busy_remaining_seconds": round(busy_remaining, 2),
         }
 

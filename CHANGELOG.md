@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.14
+
+- Calcula o tempo seguro de transmissão do quadro IR e impede colisões rápidas no iTach.
+- Desabilita os comandos da interface até o próximo envio poder ser recebido com segurança.
+- Retorna uma mensagem de aguardo em vez de erro interno quando um comando chega cedo demais.
+
 ## 0.1.0-alpha.13
 
 - Mantém o Fechar com o Pronto Hex original (`repeat=1`) e duas emissões espaçadas.

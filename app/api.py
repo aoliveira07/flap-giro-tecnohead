@@ -39,7 +39,10 @@ async def update_config(payload: ConfigPatch, request: Request):
 
 @router.post("/open")
 async def open_flap(request: Request):
-    return await runtime_from(request).open()
+    try:
+        return await runtime_from(request).open()
+    except Exception as exc:
+        raise operation_error(exc) from exc
 
 
 @router.post("/close")
@@ -86,7 +89,10 @@ async def set_position(payload: PositionRequest, request: Request):
 
 @router.post("/calibrate/home")
 async def calibrate_home(request: Request):
-    return await runtime_from(request).calibrate()
+    try:
+        return await runtime_from(request).calibrate()
+    except Exception as exc:
+        raise operation_error(exc) from exc
 
 
 @router.post("/turn_on")
@@ -186,7 +192,9 @@ async def test_ir(action: str, request: Request):
     if action not in {"open", "close", "stop", "left", "right"}:
         raise HTTPException(status_code=404, detail="Unknown IR action")
     try:
-        result = await runtime_from(request)._send_ir(action, source="DIAGNOSTIC")
+        runtime = runtime_from(request)
+        runtime.ensure_ir_ready()
+        result = await runtime._send_ir(action, source="DIAGNOSTIC")
         return result
     except Exception as exc:
         raise operation_error(exc) from exc

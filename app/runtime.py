@@ -217,10 +217,17 @@ class Runtime:
                 except ItachError:
                     pass
 
+    def ensure_ir_ready(self) -> None:
+        if not self.driver.is_busy():
+            return
+        remaining = max(0.1, self.driver.busy_remaining_seconds())
+        raise ValueError(f"Aguarde {remaining:.1f} s antes de enviar outro comando ao iTach.")
+
     async def _start_operation(self, name: str, operation: Callable[[], Awaitable[None]], *, cancel_active: bool = True) -> dict[str, Any]:
         async with self.control_lock:
             if self.state.get("sequence") == "TURNING_OFF" and name != "TURNING_OFF":
                 raise ValueError("O desligamento do Flap está em andamento; aguarde a conclusão.")
+            self.ensure_ir_ready()
             if cancel_active:
                 await self._cancel_active()
             self.state["sequence"] = name
@@ -308,6 +315,7 @@ class Runtime:
 
     async def stop(self, source: str = "UI") -> dict[str, Any]:
         async with self.control_lock:
+            self.ensure_ir_ready()
             await self._cancel_active(send_stop=False)
             self._update_position_from_clock()
             try:
