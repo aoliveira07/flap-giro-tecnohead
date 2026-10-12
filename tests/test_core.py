@@ -245,6 +245,27 @@ def test_position_clock_starts_only_after_itach_ack(tmp_path: Path) -> None:
     assert state["movement_in_progress"] is False
 
 
+def test_recent_command_history_keeps_three_confirmed_commands(tmp_path: Path) -> None:
+    async def exercise() -> list[dict]:
+        runtime = Runtime(tmp_path, "0.1.0-test")
+        await runtime.start()
+
+        async def fake_send_action(action, **kwargs):
+            return {"ok": True, "action": action}
+
+        runtime.driver.send_action = fake_send_action
+        try:
+            for action in ("left", "right", "stop", "close"):
+                await runtime._send_ir(action, source="TEST")
+            return list(runtime.state["recent_commands"])
+        finally:
+            await runtime.stop()
+
+    history = asyncio.run(exercise())
+    assert [item["action"] for item in history] == ["close", "stop", "right"]
+    assert all(item["source"] == "TEST" for item in history)
+
+
 def test_stop_surfaces_ir_failure_and_marks_error(tmp_path: Path) -> None:
     async def exercise() -> dict:
         runtime = Runtime(tmp_path, "0.1.0-test")

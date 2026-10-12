@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.17
+
+- Reorganiza o painel de operação com HOME / Calibrar acima do histórico.
+- Exibe os três últimos comandos IR confirmados, com origem e horário.
+
 ## 0.1.0-alpha.16
 
 - Aguarda até o timeout configurado do iTach pela confirmação `completeir`; a resposta real do equipamento chega após aproximadamente 1 segundo.

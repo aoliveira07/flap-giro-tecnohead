@@ -40,6 +40,7 @@ def default_state() -> dict[str, Any]:
         "last_command_effective": None,
         "last_command_at": None,
         "last_command_source": None,
+        "recent_commands": [],
         "source": None,
         "sequence": "IDLE",
         "tv_entity_id": None,
@@ -183,6 +184,16 @@ class Runtime:
                 minimum_protocol_repeats=minimum_protocol_repeats,
             )
             self.state["last_command_effective"] = action
+            recent_commands = list(self.state.get("recent_commands") or [])
+            recent_commands.insert(
+                0,
+                {
+                    "action": action,
+                    "timestamp": requested_at,
+                    "source": source,
+                },
+            )
+            self.state["recent_commands"] = recent_commands[:3]
             await self.persist_state()
             await self.log(source, "ir_command", action=action, result=result)
             return result
