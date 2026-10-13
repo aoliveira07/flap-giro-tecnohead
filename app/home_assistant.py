@@ -155,6 +155,11 @@ class HomeAssistantClient:
         result = await self._websocket_command(payload)
         return result if isinstance(result, dict) else {}
 
+    async def remove_entity_registry(self, entity_id: str) -> None:
+        await self._websocket_command(
+            {"type": "config/entity_registry/remove", "entity_id": entity_id}
+        )
+
     async def get_entity_registry(self, entity_id: str) -> dict[str, Any]:
         result = await self._websocket_command(
             {"type": "config/entity_registry/get", "entity_id": entity_id}

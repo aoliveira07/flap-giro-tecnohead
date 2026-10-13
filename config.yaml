@@ -1,7 +1,7 @@
 name: "Flap de Giro Tecnohead"
 slug: "flap-giro-tecnohead"
 description: "Controle persistente de flap de giro Tecnohead por Global Caché iTach"
-version: "0.1.0-alpha.26"
+version: "0.1.0-alpha.27"
 stage: experimental
 startup: application
 boot: auto
@@ -22,9 +22,6 @@ ingress: true
 ingress_port: 8100
 panel_icon: mdi:television-shimmer
 panel_title: Flap Tecnohead
-
-services:
-  - mqtt:want
 
 options:
   itach_host: ""
@@ -49,7 +46,6 @@ options:
   external_tv_on_behavior: "Abrir e restaurar"
   external_tv_off_behavior: "Fechar no HOME"
   tv_reconcile_interval_seconds: 5
-  discovery_prefix: homeassistant
 
 schema:
   itach_host: str
@@ -75,5 +71,4 @@ schema:
   external_tv_on_behavior: list(Abrir e restaurar|Ignorar)
   external_tv_off_behavior: list(Fechar no HOME|Ignorar)
   tv_reconcile_interval_seconds: float(1,300)
-  discovery_prefix: str
 

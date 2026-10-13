@@ -40,7 +40,6 @@ class AppConfig(BaseModel):
     external_tv_on_behavior: Literal["open_restore", "ignore"] = "open_restore"
     external_tv_off_behavior: Literal["home_close", "ignore"] = "home_close"
     tv_reconcile_interval_seconds: float = Field(default=5.0, ge=1, le=300)
-    discovery_prefix: str = "homeassistant"
 
     @field_validator("itach_host", "itach_connaddr", "tv_friendly_name", mode="before")
     @classmethod
@@ -62,11 +61,6 @@ class AppConfig(BaseModel):
         if not re.fullmatch(r"[1-9][0-9]*:[1-3]", normalized):
             raise ValueError("connaddr deve usar o formato módulo:conector, por exemplo 1:3")
         return normalized
-
-    @field_validator("discovery_prefix", mode="before")
-    @classmethod
-    def normalize_prefix(cls, value: object) -> str:
-        return str(value or "homeassistant").strip("/") or "homeassistant"
 
     @field_validator("home_direction", mode="before")
     @classmethod
@@ -135,8 +129,6 @@ class ConfigPatch(BaseModel):
     external_tv_on_behavior: Literal["open_restore", "ignore"] | None = None
     external_tv_off_behavior: Literal["home_close", "ignore"] | None = None
     tv_reconcile_interval_seconds: float | None = Field(default=None, ge=1, le=300)
-    discovery_prefix: str | None = None
-
     @field_validator("itach_connaddr", mode="before")
     @classmethod
     def normalize_itach_connaddr(cls, value: object) -> object:

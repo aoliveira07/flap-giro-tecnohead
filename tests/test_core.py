@@ -11,7 +11,6 @@ from app.home_assistant import HomeAssistantClient
 from app.ha_composition import HomeAssistantCompositionFiles, render_universal_media_player
 from app.itach import ItachDriver, ItachError
 from app.models import AppConfig
-from app.mqtt import MqttBridge
 from app.protocol import parse_pronto, pronto_frequency_hz, pronto_to_itach
 from app.profile import load_profile
 from app.runtime import Runtime, base_entity_id
@@ -97,7 +96,7 @@ def test_universal_media_player_renders_full_tv_controls() -> None:
     assert 'name: "TV Piscina"' in rendered
     assert 'entity_id: "media_player.tv_piscina_base"' in rendered
     assert 'volume_level: "media_player.tv_piscina_base|volume_level"' in rendered
-    assert 'source_list: "select.flap_giro_tecnohead_preset|options"' in rendered
+    assert 'source_list: "input_select.flap_giro_tecnohead_preset|options"' in rendered
     for command in (
         "turn_on",
         "turn_off",
@@ -114,7 +113,8 @@ def test_universal_media_player_renders_full_tv_controls() -> None:
         "select_source",
     ):
         assert f"    {command}:" in rendered
-    assert 'entity_id: "select.flap_giro_tecnohead_preset"' in rendered
+    assert 'action: input_select.select_option' in rendered
+    assert 'entity_id: "input_select.flap_giro_tecnohead_preset"' in rendered
 
 
 def test_home_assistant_composition_files_are_idempotent_and_preserve_other_players(tmp_path: Path) -> None:
@@ -129,6 +129,7 @@ def test_home_assistant_composition_files_are_idempotent_and_preserve_other_play
         composed_entity_id="media_player.tv_piscina",
         base_entity_id="media_player.tv_piscina_base",
         friendly_name="TV Piscina",
+        presets=[{"name": "Cozinha"}, {"name": "Poltronas"}, {"name": "Piscina"}],
     )
     assert update.changed is True
     assert update.include_changed is True
@@ -137,11 +138,17 @@ def test_home_assistant_composition_files_are_idempotent_and_preserve_other_play
     assert "TV Piscina" in media
     assert "media_player.tv_piscina_base" in media
     assert "media_player: !include media_players.yaml" in (tmp_path / "configuration.yaml").read_text(encoding="utf-8")
+    input_select = (tmp_path / "input_select.yaml").read_text(encoding="utf-8")
+    assert 'flap_giro_tecnohead_preset:' in input_select
+    assert '    - "Cozinha"' in input_select
+    assert '    - "Piscina"' in input_select
+    assert 'input_select: !include input_select.yaml' in (tmp_path / "configuration.yaml").read_text(encoding="utf-8")
 
     second = manager.ensure(
         composed_entity_id="media_player.tv_piscina",
         base_entity_id="media_player.tv_piscina_base",
         friendly_name="TV Piscina",
+        presets=[{"name": "Cozinha"}, {"name": "Poltronas"}, {"name": "Piscina"}],
     )
     assert second.changed is False
 
@@ -270,52 +277,9 @@ def test_runtime_rejects_commands_during_ir_cooldown(tmp_path: Path) -> None:
             with pytest.raises(ValueError, match="Aguarde"):
                 await runtime.open()
         finally:
-            await runtime.mqtt.stop()
+            await runtime.stop()
 
     asyncio.run(exercise())
-
-
-def test_mqtt_refresh_publishes_current_preset_sources() -> None:
-    async def exercise() -> dict[str, object]:
-        published: list[tuple[str, str]] = []
-
-        class FakeClient:
-            async def publish(self, topic, payload, qos=0, retain=False):
-                published.append((str(topic), payload.decode() if isinstance(payload, bytes) else str(payload)))
-
-        async def snapshot() -> dict[str, object]:
-            return {
-                "state": {"tv_power_state": "off", "source": "Piscina"},
-                "presets": [{"name": "Cozinha", "position": 30}, {"name": "Piscina", "position": 100}],
-                "itach": {"configured": True},
-                "config": {
-                    "tv_composed_entity_id": "media_player.tv_piscina",
-                    "tv_friendly_name": "TV Piscina",
-                },
-            }
-
-        async def on_command(kind: str, payload: str) -> None:
-            return None
-
-        bridge = MqttBridge("homeassistant", snapshot, on_command)
-        bridge.client = FakeClient()
-        bridge.connected = True
-        await bridge.publish_current_state()
-
-        media_discovery = next(payload for topic, payload in published if topic.endswith("/media_player/flap_giro_tecnohead/config"))
-        preset_select = next(payload for topic, payload in published if topic.endswith("/select/flap_giro_tecnohead_preset/config"))
-        attributes = next(payload for topic, payload in published if topic == "flap_giro_tecnohead/attributes")
-        return {
-            "media_discovery": media_discovery,
-            "preset_select": json.loads(preset_select),
-            "attributes": json.loads(attributes),
-        }
-
-    result = asyncio.run(exercise())
-    assert result["media_discovery"] == ""
-    assert result["preset_select"]["default_entity_id"] == "select.flap_giro_tecnohead_preset"
-    assert result["preset_select"]["options"] == ["Cozinha", "Piscina"]
-    assert result["attributes"]["source_list"] == ["Cozinha", "Piscina"]
 
 
 def test_legacy_itach_connector_number_is_upgraded_to_module_address() -> None:
@@ -429,7 +393,7 @@ def test_stop_surfaces_ir_failure_and_marks_error(tmp_path: Path) -> None:
                 await runtime.stop()
             return runtime.state
         finally:
-            await runtime.mqtt.stop()
+            await runtime.stop()
 
     state = asyncio.run(exercise())
     assert state["flap_state"] == "ERROR"

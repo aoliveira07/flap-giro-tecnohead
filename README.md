@@ -4,7 +4,7 @@ Repositório independente para o Home Assistant App de controle do Flap de Giro 
 
 ## Instalação
 
-Adicione o repositório ao App Store do Home Assistant, instale **Flap de Giro Tecnohead**, inicie e abra pelo Ingress. O App usa `host_network: true` para alcançar o iTach na rede local e solicita o serviço MQTT do Home Assistant quando disponível.
+Adicione o repositório ao App Store do Home Assistant, instale **Flap de Giro Tecnohead**, inicie e abra pelo Ingress. O App usa `host_network: true` para alcançar o iTach na rede local e usa a API nativa do Home Assistant para a integração da TV.
 
 ## Primeira configuração
 
@@ -16,9 +16,11 @@ Preencha na tela de configuração:
 - curso total inicial: `37` segundos
 - HOME: direção `Esquerda` e margem adicional inicialmente `2` segundos
 
-Selecione a entidade `media_player` real da TV somente depois que o vínculo com o Home Assistant estiver disponível. A entidade composta publica os presets como sources e espelha o estado de power da TV real; o estado mecânico do Flap aparece separadamente.
+Selecione a entidade `media_player` real da TV somente depois que o vínculo com o Home Assistant estiver disponível. A entidade composta publica os presets como sources por meio de um `input_select` nativo e espelha o estado de power da TV real; o estado mecânico do Flap aparece separadamente.
 
-O App lê automaticamente o host, porta e credenciais do serviço MQTT fornecido pelo Supervisor. Ao salvar a TV real, ela é renomeada para o sufixo `— Base`, enquanto a entidade composta mantém o ID e o cômodo da TV original. A inclusão do Media Player Universal, seus comandos e o recarregamento da integração são feitos automaticamente pelo próprio App; não é necessário editar o `configuration.yaml` no Studio Code.
+O App não depende de MQTT. Ao vincular a TV, ele cria e mantém automaticamente `media_players.yaml` e `input_select.yaml`, inclui os dois arquivos no `configuration.yaml`, recarrega a entidade Universal e sincroniza as mudanças de preset pela API do Home Assistant.
+
+Ao salvar a TV real, ela é renomeada para o sufixo `— Base`, enquanto a entidade composta mantém o ID e o cômodo da TV original. A inclusão do Media Player Universal, do seletor nativo de presets, seus comandos e o recarregamento da integração são feitos automaticamente pelo próprio App; não é necessário editar o `configuration.yaml` no Studio Code.
 
 ## Primeiro teste físico
 

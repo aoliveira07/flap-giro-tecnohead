@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.27
+
+- Remove a dependência MQTT, o bridge, a descoberta e a publicação de estado do App.
+- Substitui o seletor MQTT por um `input_select` nativo gerenciado automaticamente pela API do Home Assistant.
+- Faz a migração dos registros MQTT antigos para que eles não reapareçam após a atualização.
+
 ## 0.1.0-alpha.26
 
 - Corrige o YAML automático do Media Player Universal, protegendo com aspas os atributos que usam `entidade|atributo`.

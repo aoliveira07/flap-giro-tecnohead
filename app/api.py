@@ -122,7 +122,7 @@ async def list_presets(request: Request):
 @router.post("/presets", status_code=201)
 async def create_preset(payload: PresetCreate, request: Request):
     item = await runtime_from(request).database.create_preset(payload.name.strip(), payload.position)
-    await runtime_from(request).mqtt.publish_current_state()
+    await runtime_from(request).refresh_preset_entities()
     return item
 
 
@@ -134,7 +134,7 @@ async def update_preset(preset_id: int, payload: PresetUpdate, request: Request)
     item = await runtime_from(request).database.update_preset(preset_id, values)
     if not item:
         raise HTTPException(status_code=404, detail="Preset not found")
-    await runtime_from(request).mqtt.publish_current_state()
+    await runtime_from(request).refresh_preset_entities()
     return item
 
 
@@ -142,7 +142,7 @@ async def update_preset(preset_id: int, payload: PresetUpdate, request: Request)
 async def delete_preset(preset_id: int, request: Request):
     if not await runtime_from(request).database.delete_preset(preset_id):
         raise HTTPException(status_code=404, detail="Preset not found")
-    await runtime_from(request).mqtt.publish_current_state()
+    await runtime_from(request).refresh_preset_entities()
     return Response(status_code=204)
 
 

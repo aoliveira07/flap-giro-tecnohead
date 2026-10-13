@@ -15,12 +15,18 @@ from pathlib import Path
 
 
 MANAGED_UNIQUE_PREFIX = "flap_giro_tecnohead_"
+PRESET_INPUT_SELECT_ENTITY_ID = "input_select.flap_giro_tecnohead_preset"
+MANAGED_INPUT_SELECT_KEY = "flap_giro_tecnohead_preset"
+MANAGED_INPUT_SELECT_BEGIN = "# BEGIN flap-giro-tecnohead managed input select"
+MANAGED_INPUT_SELECT_END = "# END flap-giro-tecnohead managed input select"
 
 
 @dataclass(frozen=True)
 class CompositionUpdate:
     changed: bool = False
     include_changed: bool = False
+    media_player_changed: bool = False
+    input_select_changed: bool = False
 
 
 def _yaml_string(value: str) -> str:
@@ -38,7 +44,7 @@ def render_universal_media_player(
     composed_entity_id: str,
     base_entity_id: str,
     friendly_name: str,
-    preset_select_entity_id: str = "select.flap_giro_tecnohead_preset",
+    preset_select_entity_id: str = PRESET_INPUT_SELECT_ENTITY_ID,
 ) -> str:
     """Render the complete TV control surface for a Universal Media Player."""
 
@@ -110,7 +116,7 @@ def render_universal_media_player(
         media_content_id: "{{{{ media_content_id }}}}"
         media_content_type: "{{{{ media_content_type }}}}"
     select_source:
-      action: select.select_option
+      action: input_select.select_option
       target:
         entity_id: {preset_select}
       data:
@@ -161,15 +167,18 @@ class HomeAssistantCompositionFiles:
         composed_entity_id: str,
         base_entity_id: str,
         friendly_name: str,
-        preset_select_entity_id: str = "select.flap_giro_tecnohead_preset",
+        presets: list[dict[str, object]] | None = None,
+        preset_select_entity_id: str = PRESET_INPUT_SELECT_ENTITY_ID,
     ) -> CompositionUpdate:
-        """Write the managed entry and include, returning the required reload."""
+        """Write the managed entries and includes, returning the required reload."""
 
         if not self.available:
             return CompositionUpdate()
 
         media_path = self.config_dir / "media_players.yaml"
+        input_select_path = self.config_dir / "input_select.yaml"
         configuration_path = self.config_dir / "configuration.yaml"
+        preset_names = [str(item["name"]).strip() for item in (presets or []) if str(item.get("name", "")).strip()]
         rendered = render_universal_media_player(
             composed_entity_id=composed_entity_id,
             base_entity_id=base_entity_id,
@@ -177,8 +186,16 @@ class HomeAssistantCompositionFiles:
             preset_select_entity_id=preset_select_entity_id,
         )
         media_changed = self._upsert_media_player(media_path, rendered)
-        include_changed = self._ensure_include(configuration_path, "media_player", "media_players.yaml")
-        return CompositionUpdate(changed=media_changed or include_changed, include_changed=include_changed)
+        input_select_changed = self._upsert_input_select(input_select_path, preset_names)
+        media_include_changed = self._ensure_include(configuration_path, "media_player", "media_players.yaml")
+        input_select_include_changed = self._ensure_include(configuration_path, "input_select", "input_select.yaml")
+        include_changed = media_include_changed or input_select_include_changed
+        return CompositionUpdate(
+            changed=media_changed or input_select_changed or include_changed,
+            include_changed=include_changed,
+            media_player_changed=media_changed,
+            input_select_changed=input_select_changed,
+        )
 
     @staticmethod
     def _write_if_changed(path: Path, content: str) -> bool:
@@ -217,6 +234,40 @@ class HomeAssistantCompositionFiles:
 
         body = "\n\n".join([*blocks, rendered.rstrip("\n")]).rstrip() + "\n"
         content = f"{prefix}{body}" if prefix else body
+        return cls._write_if_changed(path, content)
+
+    @classmethod
+    def _upsert_input_select(cls, path: Path, preset_names: list[str]) -> bool:
+        rendered = "\n".join(
+            [
+                MANAGED_INPUT_SELECT_BEGIN,
+                f"{MANAGED_INPUT_SELECT_KEY}:",
+                '  name: "Preset do Flap Tecnohead"',
+                "  options:",
+                *[f"    - {_yaml_string(name)}" for name in preset_names],
+                "  icon: mdi:bookmark-multiple",
+                MANAGED_INPUT_SELECT_END,
+                "",
+            ]
+        )
+        try:
+            current = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            current = ""
+
+        if MANAGED_INPUT_SELECT_BEGIN in current and MANAGED_INPUT_SELECT_END in current:
+            start = current.index(MANAGED_INPUT_SELECT_BEGIN)
+            end = current.index(MANAGED_INPUT_SELECT_END, start) + len(MANAGED_INPUT_SELECT_END)
+            content = f"{current[:start]}{rendered.rstrip()}\n{current[end:].lstrip(chr(10))}"
+            return cls._write_if_changed(path, content)
+
+        for line in current.splitlines():
+            if line.strip().startswith(f"{MANAGED_INPUT_SELECT_KEY}:"):
+                raise RuntimeError(
+                    f"O arquivo {path} já possui uma configuração manual para {MANAGED_INPUT_SELECT_KEY}"
+                )
+        prefix = current.rstrip()
+        content = f"{prefix}\n\n{rendered}" if prefix else rendered
         return cls._write_if_changed(path, content)
 
     @classmethod

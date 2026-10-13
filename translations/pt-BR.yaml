@@ -67,7 +67,4 @@ configuration:
     description: Define o que fazer quando a TV for desligada externamente.
   tv_reconcile_interval_seconds:
     name: Intervalo de sincronização com a TV (s)
-    description: Frequência de verificação do estado da TV, em segundos.
-  discovery_prefix:
-    name: Prefixo do MQTT Discovery
-    description: Prefixo usado para publicar os dispositivos e entidades MQTT Discovery.
+    description: Frequência de verificação do estado da TV e dos presets, em segundos.

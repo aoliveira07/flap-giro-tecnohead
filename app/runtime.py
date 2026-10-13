@@ -11,7 +11,6 @@ from app.ha_composition import CompositionUpdate, HomeAssistantCompositionFiles
 from app.home_assistant import HomeAssistantClient, HomeAssistantError
 from app.itach import ItachDriver, ItachError
 from app.models import AppConfig
-from app.mqtt import MqttBridge
 from app.profile import load_profile
 from app.storage import Database, utc_now
 
@@ -60,6 +59,7 @@ def default_state() -> dict[str, Any]:
         "tv_last_confirmed_at": None,
         "tv_last_change_source": None,
         "tv_pending_action": None,
+        "legacy_mqtt_cleanup_done": False,
         "updated_at": utc_now(),
     }
 
@@ -82,7 +82,6 @@ class Runtime:
         self.driver = ItachDriver(self.config, self.profile)
         self.ha = ha_client or HomeAssistantClient()
         self.ha_composition = HomeAssistantCompositionFiles()
-        self.mqtt = MqttBridge(self.config.discovery_prefix, self.snapshot, self.handle_mqtt_command)
         self.started_at = time.monotonic()
         self.control_lock = asyncio.Lock()
         self.operation_task: asyncio.Task | None = None
@@ -92,6 +91,7 @@ class Runtime:
         self.errors: deque[dict[str, str]] = deque(maxlen=100)
         self.initial_tv_sync_done = False
         self.composed_entity_sync_done = False
+        self.initial_preset_sync_done = False
 
     async def start(self) -> None:
         await self.database.initialize(DEFAULT_PRESETS)
@@ -105,7 +105,8 @@ class Runtime:
         )
         old_composed_entity_id = self.config.tv_composed_entity_id
         self.config, composition_changed = await self._ensure_composed_tv(self.config, strict=False)
-        media_player_update = await self._ensure_media_player_files(self.config, strict=False)
+        presets = await self.list_presets()
+        media_player_update = await self._ensure_media_player_files(self.config, presets, strict=False)
         if composition_changed:
             await self.database.set_json("config", self.config.model_dump())
         saved_state = await self.database.get_json("state", {})
@@ -122,15 +123,17 @@ class Runtime:
             await self.persist_state()
         self.state["tv_entity_id"] = self.config.tv_entity_id
         self.driver.update_config(self.config)
-        self.mqtt.discovery_prefix = self.config.discovery_prefix
         if composition_changed:
             await self._rename_existing_composed_entity(
                 old_composed_entity_id,
                 self.config.tv_composed_entity_id,
                 self.config.tv_friendly_name,
             )
-        await self.mqtt.start()
-        await self._apply_media_player_update(media_player_update)
+        if not self.state.get("legacy_mqtt_cleanup_done"):
+            if await self._cleanup_legacy_mqtt_entities():
+                self.state["legacy_mqtt_cleanup_done"] = True
+                await self.persist_state()
+        await self._apply_media_player_update(media_player_update, presets)
         self.composed_entity_sync_task = asyncio.create_task(
             self._composed_entity_sync_loop(), name="flap-composed-entity-sync"
         )
@@ -149,7 +152,6 @@ class Runtime:
         if self.composed_entity_sync_task:
             self.composed_entity_sync_task.cancel()
             await asyncio.gather(self.composed_entity_sync_task, return_exceptions=True)
-        await self.mqtt.stop()
 
     def record_error(self, message: str) -> None:
         LOGGER.error(message)
@@ -169,11 +171,17 @@ class Runtime:
             "config": self.config.model_dump(),
             "presets": await self.database.list_presets(),
             "itach": self.driver.status(),
-            "mqtt": self.mqtt.status(),
         }
 
     async def list_presets(self) -> list[dict[str, Any]]:
         return await self.database.list_presets()
+
+    async def refresh_preset_entities(self) -> None:
+        """Publish the current presets through native Home Assistant YAML entities."""
+
+        presets = await self.list_presets()
+        update = await self._ensure_media_player_files(self.config, presets, strict=True)
+        await self._apply_media_player_update(update, presets)
 
     async def save_config(self, patch: dict[str, Any]) -> dict[str, Any]:
         values = self.config.model_dump()
@@ -183,25 +191,30 @@ class Runtime:
         previous_composed_entity_id = self.config.tv_composed_entity_id
         candidate = AppConfig.model_validate(values)
         candidate, composition_changed = await self._ensure_composed_tv(candidate, strict=True)
-        media_player_update = await self._ensure_media_player_files(candidate, strict=True)
+        presets = await self.list_presets()
+        media_player_update = await self._ensure_media_player_files(candidate, presets, strict=True)
         self.config = candidate
         await self.database.set_json("config", self.config.model_dump())
         self.driver.update_config(self.config)
-        self.mqtt.discovery_prefix = self.config.discovery_prefix
         self.state["tv_entity_id"] = self.config.tv_entity_id
         await self.persist_state()
         self.composed_entity_sync_done = False
-        await self.mqtt.publish_current_state()
         if composition_changed:
             await self._rename_existing_composed_entity(
                 previous_composed_entity_id,
                 self.config.tv_composed_entity_id,
                 self.config.tv_friendly_name,
             )
-        await self._apply_media_player_update(media_player_update)
+        await self._apply_media_player_update(media_player_update, presets)
         return self.config.model_dump()
 
-    async def _ensure_media_player_files(self, config: AppConfig, *, strict: bool) -> CompositionUpdate:
+    async def _ensure_media_player_files(
+        self,
+        config: AppConfig,
+        presets: list[dict[str, Any]],
+        *,
+        strict: bool,
+    ) -> CompositionUpdate:
         if not (config.tv_enabled and config.tv_entity_id and config.tv_composed_entity_id):
             return CompositionUpdate()
         try:
@@ -210,6 +223,7 @@ class Runtime:
                 composed_entity_id=config.tv_composed_entity_id,
                 base_entity_id=config.tv_entity_id,
                 friendly_name=config.tv_friendly_name,
+                presets=presets,
             )
         except (OSError, RuntimeError) as exc:
             if strict:
@@ -217,18 +231,130 @@ class Runtime:
             self.record_error(f"Não foi possível preparar automaticamente o Media Player: {exc}")
             return CompositionUpdate()
 
-    async def _apply_media_player_update(self, update: CompositionUpdate) -> None:
-        if not update.changed or not self.ha.enabled:
+    async def _apply_media_player_update(self, update: CompositionUpdate, presets: list[dict[str, Any]]) -> None:
+        if not self.ha.enabled:
             return
         try:
-            if update.include_changed:
-                # A newly added media_player include is only discovered during a
-                # Core restart. Subsequent preset/name changes use universal.reload.
+            if update.changed and update.include_changed:
+                # New YAML includes are discovered during a Core restart.
                 await self.ha.call_service("homeassistant", "restart")
-            else:
+            elif update.changed and update.media_player_changed:
                 await self.ha.reload_universal_media_players()
+            await self._sync_preset_input_select(presets)
         except HomeAssistantError as exc:
             self.record_error(f"A configuração do Media Player foi salva, mas não pôde ser recarregada: {exc}")
+
+    async def _sync_preset_input_select(self, presets: list[dict[str, Any]]) -> None:
+        """Keep the native Home Assistant input_select aligned with app presets."""
+
+        if not self.ha.enabled:
+            return
+        options = [str(item["name"]) for item in presets]
+        await self.ha.call_service(
+            "input_select",
+            "set_options",
+            data={"entity_id": "input_select.flap_giro_tecnohead_preset", "options": options},
+        )
+        selected = self.state.get("source")
+        if selected and selected in options:
+            await self.ha.call_service(
+                "input_select",
+                "select_option",
+                data={"entity_id": "input_select.flap_giro_tecnohead_preset", "option": selected},
+            )
+
+    async def _reconcile_preset_source(self) -> None:
+        """Turn a native input_select change into a preset movement."""
+
+        if not (self.config.tv_enabled and self.config.tv_entity_id and self.ha.enabled):
+            return
+        try:
+            data = await self.ha.get_state("input_select.flap_giro_tecnohead_preset")
+        except HomeAssistantError:
+            return
+        option = str(data.get("state") or "").strip()
+        if not option or option.casefold() in {"unknown", "unavailable", "none"}:
+            return
+
+        current = str(self.state.get("source") or "").strip()
+        if not self.initial_preset_sync_done:
+            self.initial_preset_sync_done = True
+            if current and current != option:
+                presets = await self.list_presets()
+                selected = next((item for item in presets if str(item["name"]) == current), None)
+                if selected:
+                    await self.ha.call_service(
+                        "input_select",
+                        "select_option",
+                        data={
+                            "entity_id": "input_select.flap_giro_tecnohead_preset",
+                            "option": current,
+                        },
+                    )
+            elif not current:
+                self.state["source"] = option
+                await self.persist_state()
+            return
+
+        if option == current or (self.operation_task and not self.operation_task.done()):
+            return
+        presets = await self.list_presets()
+        selected = next((item for item in presets if str(item["name"]) == option), None)
+        if selected:
+            await self.preset(int(selected["id"]), source="HA")
+
+    async def _cleanup_legacy_mqtt_entities(self) -> bool:
+        """Remove old MQTT-discovered entities during the one-time migration.
+
+        The application no longer connects to or publishes through MQTT.  The
+        retained discovery records are cleared once through Home Assistant's
+        own service API so an old installation cannot recreate the removed
+        entities after a restart.
+        """
+
+        if not self.ha.enabled:
+            return False
+        topics = [
+            (domain, key)
+            for domain, keys in {
+                "media_player": [""],
+                "sensor": ["position", "flap_state", "calibration", "last_command"],
+                "binary_sensor": ["itach"],
+                "button": ["open", "close", "left", "stop", "right", "calibrate"],
+                "number": ["target_position"],
+                "select": ["preset"],
+            }.items()
+            for key in keys
+        ]
+        all_topics_cleared = True
+        for domain, key in topics:
+            try:
+                await self.ha.call_service(
+                    "mqtt",
+                    "publish",
+                    data={
+                        "topic": f"homeassistant/{domain}/flap_giro_tecnohead{f'_{key}' if key else ''}/config",
+                        "payload": "",
+                        "retain": True,
+                    },
+                )
+            except HomeAssistantError:
+                # MQTT is not an application dependency. If the integration
+                # is absent, registry cleanup below still removes entities.
+                all_topics_cleared = False
+                continue
+        try:
+            states = await self.ha.list_states()
+            for item in states:
+                entity_id = str(item.get("entity_id") or "")
+                if any(entity_id.startswith(f"{domain}.flap_giro_tecnohead_") for domain, _ in topics):
+                    try:
+                        await self.ha.remove_entity_registry(entity_id)
+                    except HomeAssistantError:
+                        continue
+        except HomeAssistantError as exc:
+            self.record_error(f"Não foi possível concluir a migração das entidades antigas: {exc}")
+        return all_topics_cleared
 
     async def _ensure_composed_tv(self, config: AppConfig, *, strict: bool) -> tuple[AppConfig, bool]:
         """Turn the selected real TV into the base of an automatic composite entity."""
@@ -304,7 +430,7 @@ class Runtime:
                 raise
 
     async def _sync_composed_entity_registry(self) -> bool:
-        """Apply the base TV's name and area after MQTT Discovery creates it."""
+        """Apply the configured name and area to the generated TV entity."""
         if not (self.config.tv_enabled and self.config.tv_entity_id and self.ha.enabled):
             return False
         composed_entity_id = self.config.tv_composed_entity_id
@@ -350,7 +476,7 @@ class Runtime:
 
     async def _composed_entity_sync_loop(self) -> None:
         while not self.stop_event.is_set():
-            if not self.composed_entity_sync_done and self.mqtt.connected:
+            if not self.composed_entity_sync_done and self.ha.enabled:
                 try:
                     self.composed_entity_sync_done = await self._sync_composed_entity_registry()
                 except HomeAssistantError as exc:
@@ -686,6 +812,7 @@ class Runtime:
             await self._move_to_now(float(item["position"]), source=source)
             self.state.update({"source": item["name"], "sequence": "IDLE"})
             await self.persist_state()
+            await self._sync_preset_input_select(presets)
 
         return await self._start_operation("SELECTING_PRESET", operation)
 
@@ -734,6 +861,7 @@ class Runtime:
                 if item:
                     await self._move_to_now(float(item["position"]), source=source)
                     self.state["source"] = item["name"]
+                    await self._sync_preset_input_select(presets)
             self.state["sequence"] = "IDLE"
             await self.persist_state()
 
@@ -806,6 +934,7 @@ class Runtime:
     async def _tv_reconcile_loop(self) -> None:
         while not self.stop_event.is_set():
             await self.reconcile_tv()
+            await self._reconcile_preset_source()
             try:
                 await asyncio.wait_for(self.stop_event.wait(), timeout=self.config.tv_reconcile_interval_seconds)
             except asyncio.TimeoutError:
@@ -821,32 +950,6 @@ class Runtime:
             self.record_error(str(exc))
             return []
 
-    async def handle_mqtt_command(self, kind: str, payload: str) -> None:
-        source = "MQTT"
-        value = payload.strip()
-        if kind == "media":
-            if value.upper() in {"ON", "TURN_ON"}:
-                await self.turn_on(source)
-            elif value.upper() in {"OFF", "TURN_OFF"}:
-                await self.turn_off(source)
-        elif kind == "source":
-            presets = await self.list_presets()
-            item = next((item for item in presets if item["name"].casefold() == value.casefold()), None)
-            if item:
-                await self.preset(int(item["id"]), source)
-        elif kind == "position":
-            await self.position(float(value), source)
-        elif kind == "preset":
-            presets = await self.list_presets()
-            item = next((item for item in presets if str(item["id"]) == value or item["name"].casefold() == value.casefold()), None)
-            if item:
-                await self.preset(int(item["id"]), source)
-        elif value.upper() in {"PRESS", "ON", "1"}:
-            actions = {"open": self.open, "close": self.close, "left": lambda s: self.position(0, s), "right": lambda s: self.position(100, s), "stop": self.stop, "calibrate": self.calibrate}
-            action = actions.get(kind)
-            if action:
-                await action(source)
-
     def status(self) -> dict[str, Any]:
         return {
             "app_version": self.version,
@@ -855,7 +958,6 @@ class Runtime:
             "config": self.config.model_dump(),
             "profile": {"id": self.profile["profile_id"], "name": self.profile["name"], "version": self.profile["version"]},
             "itach": self.driver.status(),
-            "mqtt": self.mqtt.status(),
             "errors": list(self.errors)[-20:],
             "operation_active": bool(self.operation_task and not self.operation_task.done()),
         }
