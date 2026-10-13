@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.23
+
+- Corrigida a leitura do serviço MQTT do Supervisor no início do App, permitindo a publicação da entidade composta por MQTT Discovery.
+- A entidade composta passa a usar explicitamente o ID original da TV e recebe o mesmo cômodo da entidade física/base.
+- A sincronização de nome, cômodo e ID é repetida após a descoberta MQTT, inclusive para instalações que ainda tenham a entidade legada `media_player.flap_giro_tecnohead`.
+
 ## 0.1.0-alpha.22
 
 - ao selecionar uma TV real, renomeia a entidade física para `*_base`;

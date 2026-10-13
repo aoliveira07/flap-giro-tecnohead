@@ -123,6 +123,7 @@ class HomeAssistantClient:
         *,
         name: str | None = None,
         new_entity_id: str | None = None,
+        area_id: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "type": "config/entity_registry/update",
@@ -132,6 +133,14 @@ class HomeAssistantClient:
             payload["name"] = name
         if new_entity_id is not None:
             payload["new_entity_id"] = new_entity_id
+        if area_id is not None:
+            payload["area_id"] = area_id
         result = await self._websocket_command(payload)
+        return result if isinstance(result, dict) else {}
+
+    async def get_entity_registry(self, entity_id: str) -> dict[str, Any]:
+        result = await self._websocket_command(
+            {"type": "config/entity_registry/get", "entity_id": entity_id}
+        )
         return result if isinstance(result, dict) else {}
 

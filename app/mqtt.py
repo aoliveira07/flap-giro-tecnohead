@@ -119,12 +119,13 @@ class MqttBridge:
             "name": friendly_name,
             "manufacturer": "Tecnohead",
             "model": "Flap de Giro",
-            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.22"),
+            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.23"),
         }
         media = {
             "name": friendly_name,
             "unique_id": base,
             "object_id": object_id,
+            "default_entity_id": composed_entity_id,
             "device_class": "tv",
             "command_topic": f"{base}/media/set",
             "state_topic": f"{base}/media/state",

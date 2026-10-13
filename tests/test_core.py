@@ -97,7 +97,11 @@ def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> No
             assert entity_id == "media_player.tv_piscina"
             return {"attributes": {"friendly_name": "TV Piscina"}}
 
-        async def update_entity_registry(self, entity_id: str, **changes: str) -> dict:
+        async def get_entity_registry(self, entity_id: str) -> dict:
+            assert entity_id == "media_player.tv_piscina"
+            return {"area_id": "externo_piscina"}
+
+        async def update_entity_registry(self, entity_id: str, **changes: str | None) -> dict:
             self.updates.append((entity_id, changes))
             return {}
 
@@ -114,10 +118,15 @@ def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> No
     assert config.tv_entity_id == "media_player.tv_piscina_base"
     assert config.tv_composed_entity_id == "media_player.tv_piscina"
     assert config.tv_friendly_name == "TV Piscina"
+    assert config.tv_area_id == "externo_piscina"
     assert updates == [
         (
             "media_player.tv_piscina",
-            {"name": "TV Piscina — Base", "new_entity_id": "media_player.tv_piscina_base"},
+            {
+                "name": "TV Piscina — Base",
+                "new_entity_id": "media_player.tv_piscina_base",
+                "area_id": "externo_piscina",
+            },
         )
     ]
 
@@ -219,6 +228,10 @@ def test_mqtt_refresh_publishes_current_preset_sources() -> None:
                 "state": {"tv_power_state": "off", "source": "Piscina"},
                 "presets": [{"name": "Cozinha", "position": 30}, {"name": "Piscina", "position": 100}],
                 "itach": {"configured": True},
+                "config": {
+                    "tv_composed_entity_id": "media_player.tv_piscina",
+                    "tv_friendly_name": "TV Piscina",
+                },
             }
 
         async def on_command(kind: str, payload: str) -> None:
@@ -235,6 +248,8 @@ def test_mqtt_refresh_publishes_current_preset_sources() -> None:
 
     result = asyncio.run(exercise())
     assert result["discovery"]["source_list"] == ["Cozinha", "Piscina"]
+    assert result["discovery"]["default_entity_id"] == "media_player.tv_piscina"
+    assert result["discovery"]["name"] == "TV Piscina"
     assert result["attributes"]["source_list"] == ["Cozinha", "Piscina"]
 
 

@@ -85,9 +85,11 @@ class Runtime:
         self.control_lock = asyncio.Lock()
         self.operation_task: asyncio.Task | None = None
         self.tv_task: asyncio.Task | None = None
+        self.composed_entity_sync_task: asyncio.Task | None = None
         self.stop_event = asyncio.Event()
         self.errors: deque[dict[str, str]] = deque(maxlen=100)
         self.initial_tv_sync_done = False
+        self.composed_entity_sync_done = False
 
     async def start(self) -> None:
         await self.database.initialize(DEFAULT_PRESETS)
@@ -125,6 +127,9 @@ class Runtime:
                 self.config.tv_friendly_name,
             )
         await self.mqtt.start()
+        self.composed_entity_sync_task = asyncio.create_task(
+            self._composed_entity_sync_loop(), name="flap-composed-entity-sync"
+        )
         if self.config.tv_enabled and self.config.tv_entity_id and self.ha.enabled:
             self.tv_task = asyncio.create_task(self._tv_reconcile_loop(), name="flap-tv-reconcile")
             await self.reconcile_tv(run_policy=False)
@@ -137,6 +142,9 @@ class Runtime:
         if self.tv_task:
             self.tv_task.cancel()
             await asyncio.gather(self.tv_task, return_exceptions=True)
+        if self.composed_entity_sync_task:
+            self.composed_entity_sync_task.cancel()
+            await asyncio.gather(self.composed_entity_sync_task, return_exceptions=True)
         await self.mqtt.stop()
 
     def record_error(self, message: str) -> None:
@@ -177,6 +185,7 @@ class Runtime:
         self.mqtt.discovery_prefix = self.config.discovery_prefix
         self.state["tv_entity_id"] = self.config.tv_entity_id
         await self.persist_state()
+        self.composed_entity_sync_done = False
         await self.mqtt.publish_current_state()
         if composition_changed:
             await self._rename_existing_composed_entity(
@@ -199,13 +208,25 @@ class Runtime:
         # A previously migrated entity is already the physical/base entity.
         if selected_entity_id.endswith("_base") and selected_entity_id != composed_entity_id:
             values = config.model_dump()
+            changed = False
             if composed_entity_id == DEFAULT_COMPOSED_ENTITY_ID:
                 values["tv_composed_entity_id"] = selected_entity_id.removesuffix("_base")
-                config = AppConfig.model_validate(values)
-            return config, False
+                changed = True
+            if not values.get("tv_area_id"):
+                try:
+                    registry = await self.ha.get_entity_registry(selected_entity_id)
+                    area_id = registry.get("area_id")
+                    if area_id:
+                        values["tv_area_id"] = str(area_id)
+                        changed = True
+                except HomeAssistantError:
+                    if strict:
+                        raise
+            return AppConfig.model_validate(values), changed
 
         try:
             state = await self.ha.get_state(selected_entity_id)
+            registry = await self.ha.get_entity_registry(selected_entity_id)
             attributes = state.get("attributes", {}) if isinstance(state, dict) else {}
             friendly_name = str(attributes.get("friendly_name") or "").strip()
             configured_name = config.tv_friendly_name.strip()
@@ -219,6 +240,7 @@ class Runtime:
                 selected_entity_id,
                 name=f"{friendly_name} — Base",
                 new_entity_id=new_base_entity_id,
+                area_id=str(registry.get("area_id")) if registry.get("area_id") else None,
             )
         except HomeAssistantError:
             if strict:
@@ -232,6 +254,7 @@ class Runtime:
                 "tv_entity_id": new_base_entity_id,
                 "tv_composed_entity_id": selected_entity_id,
                 "tv_friendly_name": friendly_name,
+                "tv_area_id": str(registry.get("area_id")) if registry.get("area_id") else None,
             }
         )
         return AppConfig.model_validate(values), True
@@ -244,6 +267,63 @@ class Runtime:
         except HomeAssistantError as exc:
             if "not found" not in str(exc).casefold() and "não encontrado" not in str(exc).casefold():
                 raise
+
+    async def _sync_composed_entity_registry(self) -> bool:
+        """Apply the base TV's name and area after MQTT Discovery creates it."""
+        if not (self.config.tv_enabled and self.config.tv_entity_id and self.ha.enabled):
+            return False
+        composed_entity_id = self.config.tv_composed_entity_id
+        area_id = self.config.tv_area_id
+        if not area_id:
+            try:
+                base_registry = await self.ha.get_entity_registry(self.config.tv_entity_id)
+                area_id = str(base_registry.get("area_id")) if base_registry.get("area_id") else None
+                if area_id:
+                    values = self.config.model_dump()
+                    values["tv_area_id"] = area_id
+                    self.config = AppConfig.model_validate(values)
+                    await self.database.set_json("config", self.config.model_dump())
+            except HomeAssistantError:
+                area_id = None
+        try:
+            await self.ha.update_entity_registry(
+                composed_entity_id,
+                name=self.config.tv_friendly_name,
+                area_id=area_id,
+            )
+            return True
+        except HomeAssistantError as exc:
+            # Discovery may still be creating the entity. If an older retained
+            # discovery entry exists under the legacy ID, move it to the exact
+            # ID selected from the physical TV instead.
+            if composed_entity_id == DEFAULT_COMPOSED_ENTITY_ID:
+                if "not found" in str(exc).casefold() or "não encontrado" in str(exc).casefold():
+                    return False
+                raise
+            try:
+                await self.ha.update_entity_registry(
+                    DEFAULT_COMPOSED_ENTITY_ID,
+                    name=self.config.tv_friendly_name,
+                    new_entity_id=composed_entity_id,
+                    area_id=area_id,
+                )
+                return True
+            except HomeAssistantError as legacy_exc:
+                if "not found" in str(legacy_exc).casefold() or "não encontrado" in str(legacy_exc).casefold():
+                    return False
+                raise
+
+    async def _composed_entity_sync_loop(self) -> None:
+        while not self.stop_event.is_set():
+            if not self.composed_entity_sync_done and self.mqtt.connected:
+                try:
+                    self.composed_entity_sync_done = await self._sync_composed_entity_registry()
+                except HomeAssistantError as exc:
+                    self.record_error(f"Não foi possível sincronizar a entidade composta da TV: {exc}")
+            try:
+                await asyncio.wait_for(self.stop_event.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
 
     async def _send_ir(
         self,
