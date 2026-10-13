@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-alpha.24
+
+- Publica os presets também como entidade MQTT `select`, com opções atualizadas dinamicamente e ID estável para uso pelo Media Player Universal do Home Assistant.
+
 ## 0.1.0-alpha.23
 
 - Corrigida a leitura do serviço MQTT do Supervisor no início do App, permitindo a publicação da entidade composta por MQTT Discovery.

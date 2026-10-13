@@ -119,7 +119,7 @@ class MqttBridge:
             "name": friendly_name,
             "manufacturer": "Tecnohead",
             "model": "Flap de Giro",
-            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.23"),
+            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.24"),
         }
         media = {
             "name": friendly_name,
@@ -188,8 +188,10 @@ class MqttBridge:
         select = {
             "name": "Preset do Flap",
             "unique_id": f"{base}_preset",
+            "default_entity_id": f"select.{base}_preset",
             "command_topic": f"{base}/preset/set",
             "state_topic": f"{base}/state/source",
+            "options": [item["name"] for item in snapshot.get("presets", [])],
             "availability_topic": f"{base}/availability",
             "device": device,
         }

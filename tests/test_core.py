@@ -243,13 +243,20 @@ def test_mqtt_refresh_publishes_current_preset_sources() -> None:
         await bridge.publish_current_state()
 
         discovery = next(payload for topic, payload in published if topic.endswith("/media_player/flap_giro_tecnohead/config"))
+        preset_select = next(payload for topic, payload in published if topic.endswith("/select/flap_giro_tecnohead_preset/config"))
         attributes = next(payload for topic, payload in published if topic == "flap_giro_tecnohead/attributes")
-        return {"discovery": json.loads(discovery), "attributes": json.loads(attributes)}
+        return {
+            "discovery": json.loads(discovery),
+            "preset_select": json.loads(preset_select),
+            "attributes": json.loads(attributes),
+        }
 
     result = asyncio.run(exercise())
     assert result["discovery"]["source_list"] == ["Cozinha", "Piscina"]
     assert result["discovery"]["default_entity_id"] == "media_player.tv_piscina"
     assert result["discovery"]["name"] == "TV Piscina"
+    assert result["preset_select"]["default_entity_id"] == "select.flap_giro_tecnohead_preset"
+    assert result["preset_select"]["options"] == ["Cozinha", "Piscina"]
     assert result["attributes"]["source_list"] == ["Cozinha", "Piscina"]
 
 
