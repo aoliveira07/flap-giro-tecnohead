@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-alpha.28
+
+- Mantém os inputs originais da TV junto dos presets na entidade composta.
+- Permite selecionar os inputs originais encaminhando o comando para a TV base.
+- Torna a composição reversível pela configuração do App, restaurando ID, nome, cômodo e visibilidade da entidade original.
+- Preserva arquivos YAML com outras entidades ao remover a composição.
+- Aumenta a área de toque dos botões de operação.
+
 ## 0.1.0-alpha.27
 
 - Remove a dependência MQTT, o bridge, a descoberta e a publicação de estado do App.
