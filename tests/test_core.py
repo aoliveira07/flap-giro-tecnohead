@@ -130,6 +130,7 @@ def test_home_assistant_composition_files_are_idempotent_and_preserve_other_play
         base_entity_id="media_player.tv_piscina_base",
         friendly_name="TV Piscina",
         presets=[{"name": "Cozinha"}, {"name": "Poltronas"}, {"name": "Piscina"}],
+        source_options=["TV", "HDMI"],
     )
     assert update.changed is True
     assert update.include_changed is True
@@ -142,6 +143,8 @@ def test_home_assistant_composition_files_are_idempotent_and_preserve_other_play
     assert 'flap_giro_tecnohead_preset:' in input_select
     assert '    - "Cozinha"' in input_select
     assert '    - "Piscina"' in input_select
+    assert '    - "TV"' in input_select
+    assert '    - "HDMI"' in input_select
     assert 'input_select: !include input_select.yaml' in (tmp_path / "configuration.yaml").read_text(encoding="utf-8")
 
     second = manager.ensure(
@@ -149,8 +152,21 @@ def test_home_assistant_composition_files_are_idempotent_and_preserve_other_play
         base_entity_id="media_player.tv_piscina_base",
         friendly_name="TV Piscina",
         presets=[{"name": "Cozinha"}, {"name": "Poltronas"}, {"name": "Piscina"}],
+        source_options=["TV", "HDMI"],
     )
     assert second.changed is False
+
+    disabled = manager.disable(remove_media_include=True, remove_input_select_include=True)
+    assert disabled.disabled is True
+    assert disabled.changed is True
+    configuration = (tmp_path / "configuration.yaml").read_text(encoding="utf-8")
+    assert "media_player: !include media_players.yaml" not in configuration
+    assert "input_select: !include input_select.yaml" not in configuration
+    media = (tmp_path / "media_players.yaml").read_text(encoding="utf-8")
+    assert "Outra TV" in media
+    assert "TV Piscina" not in media
+    input_select = (tmp_path / "input_select.yaml").read_text(encoding="utf-8")
+    assert "flap_giro_tecnohead_preset" not in input_select
 
 
 def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> None:
@@ -162,7 +178,7 @@ def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> No
 
         async def get_state(self, entity_id: str) -> dict:
             assert entity_id == "media_player.tv_piscina"
-            return {"attributes": {"friendly_name": "TV Piscina"}}
+            return {"attributes": {"friendly_name": "TV Piscina", "source_list": ["TV", "HDMI"]}}
 
         async def get_entity_registry(self, entity_id: str) -> dict:
             assert entity_id == "media_player.tv_piscina"
@@ -185,7 +201,9 @@ def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> No
     assert config.tv_entity_id == "media_player.tv_piscina_base"
     assert config.tv_composed_entity_id == "media_player.tv_piscina"
     assert config.tv_friendly_name == "TV Piscina"
+    assert config.tv_original_friendly_name == "TV Piscina"
     assert config.tv_area_id == "externo_piscina"
+    assert config.tv_original_source_list == ["TV", "HDMI"]
     assert updates == [
         (
             "media_player.tv_piscina",
@@ -193,9 +211,110 @@ def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> No
                 "name": "TV Piscina — Base",
                 "new_entity_id": "media_player.tv_piscina_base",
                 "area_id": "externo_piscina",
+                "hidden_by": "user",
             },
         )
     ]
+
+
+def test_composed_tv_disable_restores_original_entity_and_owned_files(tmp_path: Path) -> None:
+    class FakeHomeAssistant:
+        enabled = True
+
+        def __init__(self) -> None:
+            self.removed: list[str] = []
+            self.updates: list[tuple[str, dict[str, str | None]]] = []
+
+        async def remove_entity_registry(self, entity_id: str) -> None:
+            self.removed.append(entity_id)
+
+        async def update_entity_registry(self, entity_id: str, **changes: str | None) -> dict:
+            self.updates.append((entity_id, changes))
+            return {}
+
+    (tmp_path / "configuration.yaml").write_text(
+        "media_player: !include media_players.yaml\ninput_select: !include input_select.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "media_players.yaml").write_text(
+        '- platform: universal\n  unique_id: "flap_giro_tecnohead_tv_piscina"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "input_select.yaml").write_text(
+        "# BEGIN flap-giro-tecnohead managed input select\n"
+        "flap_giro_tecnohead_preset:\n"
+        "  options:\n"
+        '    - "TV"\n'
+        "# END flap-giro-tecnohead managed input select\n",
+        encoding="utf-8",
+    )
+
+    async def exercise() -> tuple[AppConfig, FakeHomeAssistant, object]:
+        ha = FakeHomeAssistant()
+        runtime = Runtime(tmp_path / "state.db", "0.1.0-test", ha_client=ha)
+        runtime.ha_composition = HomeAssistantCompositionFiles(tmp_path)
+        config = AppConfig(
+            tv_enabled=True,
+            tv_entity_id="media_player.tv_piscina_base",
+            tv_composed_entity_id="media_player.tv_piscina",
+            tv_friendly_name="TV Piscina",
+            tv_area_id="externo_piscina",
+            tv_media_include_managed=True,
+            tv_input_select_include_managed=True,
+        )
+        return (*await runtime._disable_composed_tv(config, strict=True), ha)
+
+    restored, update, ha = asyncio.run(exercise())
+    assert restored.tv_enabled is False
+    assert restored.tv_entity_id is None
+    assert ha.removed == ["media_player.tv_piscina"]
+    assert ha.updates == [
+        (
+            "media_player.tv_piscina_base",
+            {
+                "name": "TV Piscina",
+                "new_entity_id": "media_player.tv_piscina",
+                "area_id": "externo_piscina",
+                "hidden_by": None,
+            },
+        )
+    ]
+    assert update.disabled is True
+    assert "flap_giro_tecnohead" not in (tmp_path / "media_players.yaml").read_text(encoding="utf-8")
+    assert "flap_giro_tecnohead_preset" not in (tmp_path / "input_select.yaml").read_text(encoding="utf-8")
+    assert "!include" not in (tmp_path / "configuration.yaml").read_text(encoding="utf-8")
+
+
+def test_disable_keeps_include_when_yaml_file_has_other_entries(tmp_path: Path) -> None:
+    (tmp_path / "configuration.yaml").write_text(
+        "media_player: !include media_players.yaml\ninput_select: !include input_select.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "media_players.yaml").write_text(
+        '- platform: universal\n  name: Outra TV\n\n'
+        '- platform: universal\n  unique_id: "flap_giro_tecnohead_tv_piscina"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "input_select.yaml").write_text(
+        "outra_fonte:\n  name: Outra fonte\n  options:\n    - A\n\n"
+        "# BEGIN flap-giro-tecnohead managed input select\n"
+        "flap_giro_tecnohead_preset:\n"
+        "  options:\n"
+        '    - "TV"\n'
+        "# END flap-giro-tecnohead managed input select\n",
+        encoding="utf-8",
+    )
+
+    update = HomeAssistantCompositionFiles(tmp_path).disable(
+        remove_media_include=True,
+        remove_input_select_include=True,
+    )
+    configuration = (tmp_path / "configuration.yaml").read_text(encoding="utf-8")
+    assert update.changed is True
+    assert "media_player: !include media_players.yaml" in configuration
+    assert "input_select: !include input_select.yaml" in configuration
+    assert "Outra TV" in (tmp_path / "media_players.yaml").read_text(encoding="utf-8")
+    assert "outra_fonte:" in (tmp_path / "input_select.yaml").read_text(encoding="utf-8")
 
 
 def test_itach_protocol_repeat_has_safe_minimum_for_legacy_config() -> None:

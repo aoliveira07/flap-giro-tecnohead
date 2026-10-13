@@ -34,7 +34,11 @@ class AppConfig(BaseModel):
     tv_entity_id: str | None = None
     tv_composed_entity_id: str = "media_player.flap_giro_tecnohead"
     tv_friendly_name: str = "Flap de Giro Tecnohead"
+    tv_original_friendly_name: str | None = None
     tv_area_id: str | None = None
+    tv_original_source_list: list[str] = Field(default_factory=list)
+    tv_media_include_managed: bool = False
+    tv_input_select_include_managed: bool = False
     tv_initial_preset_id: int | None = None
     tv_start_delay_seconds: float = Field(default=0.0, ge=0, le=120)
     external_tv_on_behavior: Literal["open_restore", "ignore"] = "open_restore"

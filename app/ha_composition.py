@@ -27,6 +27,9 @@ class CompositionUpdate:
     include_changed: bool = False
     media_player_changed: bool = False
     input_select_changed: bool = False
+    media_include_changed: bool = False
+    input_select_include_changed: bool = False
+    disabled: bool = False
 
 
 def _yaml_string(value: str) -> str:
@@ -168,6 +171,7 @@ class HomeAssistantCompositionFiles:
         base_entity_id: str,
         friendly_name: str,
         presets: list[dict[str, object]] | None = None,
+        source_options: list[str] | None = None,
         preset_select_entity_id: str = PRESET_INPUT_SELECT_ENTITY_ID,
     ) -> CompositionUpdate:
         """Write the managed entries and includes, returning the required reload."""
@@ -186,7 +190,8 @@ class HomeAssistantCompositionFiles:
             preset_select_entity_id=preset_select_entity_id,
         )
         media_changed = self._upsert_media_player(media_path, rendered)
-        input_select_changed = self._upsert_input_select(input_select_path, preset_names)
+        options = self._merge_source_options(source_options or [], preset_names)
+        input_select_changed = self._upsert_input_select(input_select_path, options)
         media_include_changed = self._ensure_include(configuration_path, "media_player", "media_players.yaml")
         input_select_include_changed = self._ensure_include(configuration_path, "input_select", "input_select.yaml")
         include_changed = media_include_changed or input_select_include_changed
@@ -195,7 +200,18 @@ class HomeAssistantCompositionFiles:
             include_changed=include_changed,
             media_player_changed=media_changed,
             input_select_changed=input_select_changed,
+            media_include_changed=media_include_changed,
+            input_select_include_changed=input_select_include_changed,
         )
+
+    @staticmethod
+    def _merge_source_options(original_sources: list[str], preset_names: list[str]) -> list[str]:
+        options: list[str] = []
+        for value in [*original_sources, *preset_names]:
+            normalized = str(value).strip()
+            if normalized and normalized not in options:
+                options.append(normalized)
+        return options
 
     @staticmethod
     def _write_if_changed(path: Path, content: str) -> bool:
@@ -269,6 +285,126 @@ class HomeAssistantCompositionFiles:
         prefix = current.rstrip()
         content = f"{prefix}\n\n{rendered}" if prefix else rendered
         return cls._write_if_changed(path, content)
+
+    def disable(
+        self,
+        *,
+        remove_media_include: bool = False,
+        remove_input_select_include: bool = False,
+    ) -> CompositionUpdate:
+        """Remove only the entries owned by this app and optionally its includes."""
+
+        if not self.available:
+            return CompositionUpdate(disabled=True)
+
+        media_path = self.config_dir / "media_players.yaml"
+        input_select_path = self.config_dir / "input_select.yaml"
+        configuration_path = self.config_dir / "configuration.yaml"
+        media_changed = self._remove_managed_media_player(media_path)
+        input_select_changed = self._remove_managed_input_select(input_select_path)
+        media_include_changed = (
+            self._remove_include(configuration_path, "media_player", "media_players.yaml")
+            if remove_media_include and self._file_has_no_meaningful_content(media_path)
+            else False
+        )
+        input_select_include_changed = (
+            self._remove_include(configuration_path, "input_select", "input_select.yaml")
+            if remove_input_select_include and self._file_has_no_meaningful_content(input_select_path)
+            else False
+        )
+        include_changed = media_include_changed or input_select_include_changed
+        return CompositionUpdate(
+            changed=media_changed or input_select_changed or include_changed,
+            include_changed=include_changed,
+            media_player_changed=media_changed,
+            input_select_changed=input_select_changed,
+            media_include_changed=media_include_changed,
+            input_select_include_changed=input_select_include_changed,
+            disabled=True,
+        )
+
+    def managed_include_present(self, domain: str, filename: str) -> bool:
+        """Tell the runtime whether an app-owned entry is currently included."""
+
+        configuration_path = self.config_dir / "configuration.yaml"
+        try:
+            configuration = configuration_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return False
+        if f"{domain}: !include {filename}" not in configuration:
+            return False
+        if domain == "media_player":
+            try:
+                return MANAGED_UNIQUE_PREFIX in (self.config_dir / "media_players.yaml").read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return False
+        if domain == "input_select":
+            try:
+                content = (self.config_dir / "input_select.yaml").read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return False
+            return MANAGED_INPUT_SELECT_BEGIN in content and MANAGED_INPUT_SELECT_END in content
+        return False
+
+    @classmethod
+    def _remove_managed_media_player(cls, path: Path) -> bool:
+        try:
+            current = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return False
+        lines = current.splitlines(keepends=True)
+        starts = [index for index, line in enumerate(lines) if line.startswith("- ")]
+        if not starts:
+            return False
+        prefix = "".join(lines[: starts[0]])
+        blocks: list[str] = []
+        for position, start in enumerate(starts):
+            end = starts[position + 1] if position + 1 < len(starts) else len(lines)
+            block = "".join(lines[start:end])
+            if MANAGED_UNIQUE_PREFIX not in block:
+                blocks.append(block.rstrip("\n"))
+        body = "\n\n".join(blocks).rstrip()
+        content = f"{prefix}{body}\n" if body else prefix.rstrip() + ("\n" if prefix.strip() else "")
+        return cls._write_if_changed(path, content)
+
+    @classmethod
+    def _remove_managed_input_select(cls, path: Path) -> bool:
+        try:
+            current = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return False
+        if MANAGED_INPUT_SELECT_BEGIN not in current or MANAGED_INPUT_SELECT_END not in current:
+            return False
+        start = current.index(MANAGED_INPUT_SELECT_BEGIN)
+        end = current.index(MANAGED_INPUT_SELECT_END, start) + len(MANAGED_INPUT_SELECT_END)
+        before = current[:start].rstrip()
+        after = current[end:].lstrip("\n")
+        content = f"{before}\n\n{after}" if before and after else f"{before or after}\n"
+        return cls._write_if_changed(path, content)
+
+    @classmethod
+    def _remove_include(cls, path: Path, domain: str, filename: str) -> bool:
+        try:
+            current = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return False
+        expected = f"{domain}: !include {filename}"
+        lines = current.splitlines(keepends=True)
+        kept = [line for line in lines if line.strip() != expected]
+        if len(kept) == len(lines):
+            return False
+        return cls._write_if_changed(path, "".join(kept))
+
+    @staticmethod
+    def _file_has_no_meaningful_content(path: Path) -> bool:
+        try:
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return True
+        return not any(
+            line.strip() and not line.lstrip().startswith("#")
+            for line in content.splitlines()
+        )
 
     @classmethod
     def _ensure_include(cls, path: Path, domain: str, filename: str) -> bool:

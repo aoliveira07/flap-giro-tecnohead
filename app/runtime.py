@@ -27,6 +27,26 @@ MOVEMENT_STATES = {"OPENING", "CLOSING", "MOVING"}
 TV_ON_STATES = {"on", "playing", "idle", "paused", "buffering", "media_playing", "media_paused"}
 
 
+def normalize_source_list(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    result: list[str] = []
+    for item in value:
+        source = str(item).strip()
+        if source and source not in result:
+            result.append(source)
+    return result
+
+
+def merge_source_options(original_sources: list[str], presets: list[dict[str, Any]]) -> list[str]:
+    result = list(normalize_source_list(original_sources))
+    for item in presets:
+        source = str(item.get("name", "")).strip()
+        if source and source not in result:
+            result.append(source)
+    return result
+
+
 def base_entity_id(entity_id: str) -> str:
     domain, separator, object_id = entity_id.partition(".")
     if not separator:
@@ -107,6 +127,23 @@ class Runtime:
         self.config, composition_changed = await self._ensure_composed_tv(self.config, strict=False)
         presets = await self.list_presets()
         media_player_update = await self._ensure_media_player_files(self.config, presets, strict=False)
+        before_include_memory = self.config
+        self.config = self._remember_managed_includes(self.config)
+        if (
+            self.config.tv_media_include_managed != before_include_memory.tv_media_include_managed
+            or self.config.tv_input_select_include_managed != before_include_memory.tv_input_select_include_managed
+        ):
+            composition_changed = True
+        if media_player_update.media_include_changed or media_player_update.input_select_include_changed:
+            values = self.config.model_dump()
+            values["tv_media_include_managed"] = (
+                values.get("tv_media_include_managed") or media_player_update.media_include_changed
+            )
+            values["tv_input_select_include_managed"] = (
+                values.get("tv_input_select_include_managed") or media_player_update.input_select_include_changed
+            )
+            self.config = AppConfig.model_validate(values)
+            composition_changed = True
         if composition_changed:
             await self.database.set_json("config", self.config.model_dump())
         saved_state = await self.database.get_json("state", {})
@@ -188,11 +225,26 @@ class Runtime:
         values.update({key: value for key, value in patch.items() if value is not None})
         if values.get("tv_entity_id") == "":
             values["tv_entity_id"] = None
-        previous_composed_entity_id = self.config.tv_composed_entity_id
+        previous_config = self.config
+        previous_composed_entity_id = previous_config.tv_composed_entity_id
         candidate = AppConfig.model_validate(values)
-        candidate, composition_changed = await self._ensure_composed_tv(candidate, strict=True)
         presets = await self.list_presets()
-        media_player_update = await self._ensure_media_player_files(candidate, presets, strict=True)
+        if previous_config.tv_enabled and (not candidate.tv_enabled or not candidate.tv_entity_id):
+            candidate, media_player_update = await self._disable_composed_tv(previous_config, strict=True)
+            composition_changed = False
+        else:
+            candidate, composition_changed = await self._ensure_composed_tv(candidate, strict=True)
+            media_player_update = await self._ensure_media_player_files(candidate, presets, strict=True)
+            candidate = self._remember_managed_includes(candidate)
+            if media_player_update.media_include_changed or media_player_update.input_select_include_changed:
+                values = candidate.model_dump()
+                values["tv_media_include_managed"] = (
+                    values.get("tv_media_include_managed") or media_player_update.media_include_changed
+                )
+                values["tv_input_select_include_managed"] = (
+                    values.get("tv_input_select_include_managed") or media_player_update.input_select_include_changed
+                )
+                candidate = AppConfig.model_validate(values)
         self.config = candidate
         await self.database.set_json("config", self.config.model_dump())
         self.driver.update_config(self.config)
@@ -224,12 +276,83 @@ class Runtime:
                 base_entity_id=config.tv_entity_id,
                 friendly_name=config.tv_friendly_name,
                 presets=presets,
+                source_options=config.tv_original_source_list,
             )
         except (OSError, RuntimeError) as exc:
             if strict:
                 raise HomeAssistantError(f"Não foi possível preparar os arquivos do Media Player: {exc}") from exc
             self.record_error(f"Não foi possível preparar automaticamente o Media Player: {exc}")
             return CompositionUpdate()
+
+    def _remember_managed_includes(self, config: AppConfig) -> AppConfig:
+        if not config.tv_enabled:
+            return config
+        values = config.model_dump()
+        values["tv_media_include_managed"] = values.get(
+            "tv_media_include_managed"
+        ) or self.ha_composition.managed_include_present("media_player", "media_players.yaml")
+        values["tv_input_select_include_managed"] = values.get(
+            "tv_input_select_include_managed"
+        ) or self.ha_composition.managed_include_present("input_select", "input_select.yaml")
+        return AppConfig.model_validate(values)
+
+    async def _disable_composed_tv(
+        self,
+        config: AppConfig,
+        *,
+        strict: bool,
+    ) -> tuple[AppConfig, CompositionUpdate]:
+        """Undo the entity rename and remove only the app-owned HA entries."""
+
+        # Older installs did not persist ownership flags.  Re-detect the
+        # app-owned includes before deciding which include lines are safe to
+        # remove, so disabling remains reversible after an upgrade.
+        config = self._remember_managed_includes(config)
+        composed_entity_id = config.tv_composed_entity_id
+        base_id = config.tv_entity_id
+        original_name = config.tv_original_friendly_name or config.tv_friendly_name
+        original_area = config.tv_area_id
+        if self.ha.enabled and composed_entity_id and base_id and composed_entity_id != base_id:
+            try:
+                await self.ha.remove_entity_registry(composed_entity_id)
+            except HomeAssistantError as exc:
+                if "not found" not in str(exc).casefold() and "não encontrado" not in str(exc).casefold():
+                    if strict:
+                        raise
+            try:
+                await self.ha.update_entity_registry(
+                    base_id,
+                    name=original_name,
+                    new_entity_id=composed_entity_id,
+                    area_id=original_area,
+                    hidden_by=None,
+                )
+            except HomeAssistantError:
+                if strict:
+                    raise
+
+        try:
+            update = await asyncio.to_thread(
+                self.ha_composition.disable,
+                remove_media_include=config.tv_media_include_managed,
+                remove_input_select_include=config.tv_input_select_include_managed,
+            )
+        except (OSError, RuntimeError) as exc:
+            if strict:
+                raise HomeAssistantError(f"Não foi possível desfazer a composição do Media Player: {exc}") from exc
+            self.record_error(f"Não foi possível desfazer automaticamente o Media Player: {exc}")
+            update = CompositionUpdate(disabled=True)
+
+        values = config.model_dump()
+        values.update(
+            {
+                "tv_enabled": False,
+                "tv_entity_id": None,
+                "tv_media_include_managed": False,
+                "tv_input_select_include_managed": False,
+            }
+        )
+        return AppConfig.model_validate(values), update
 
     async def _apply_media_player_update(self, update: CompositionUpdate, presets: list[dict[str, Any]]) -> None:
         if not self.ha.enabled:
@@ -240,7 +363,10 @@ class Runtime:
                 await self.ha.call_service("homeassistant", "restart")
             elif update.changed and update.media_player_changed:
                 await self.ha.reload_universal_media_players()
-            await self._sync_preset_input_select(presets)
+            elif update.changed and update.input_select_changed:
+                await self.ha.reload_input_selects()
+            if not update.disabled:
+                await self._sync_preset_input_select(presets)
         except HomeAssistantError as exc:
             self.record_error(f"A configuração do Media Player foi salva, mas não pôde ser recarregada: {exc}")
 
@@ -249,7 +375,7 @@ class Runtime:
 
         if not self.ha.enabled:
             return
-        options = [str(item["name"]) for item in presets]
+        options = merge_source_options(self.config.tv_original_source_list, presets)
         await self.ha.call_service(
             "input_select",
             "set_options",
@@ -302,6 +428,20 @@ class Runtime:
         selected = next((item for item in presets if str(item["name"]) == option), None)
         if selected:
             await self.preset(int(selected["id"]), source="HA")
+            return
+
+        if option in self.config.tv_original_source_list:
+            try:
+                await self.ha.call_service(
+                    "media_player",
+                    "select_source",
+                    self.config.tv_entity_id,
+                    {"source": option},
+                )
+                self.state["source"] = option
+                await self.persist_state()
+            except HomeAssistantError as exc:
+                self.record_error(f"Não foi possível selecionar a entrada original da TV: {exc}")
 
     async def _cleanup_legacy_mqtt_entities(self) -> bool:
         """Remove old MQTT-discovered entities during the one-time migration.
@@ -370,6 +510,16 @@ class Runtime:
         if selected_entity_id.endswith("_base") and selected_entity_id != composed_entity_id:
             values = config.model_dump()
             changed = False
+            try:
+                # Universal Media Player is the public entity while the real
+                # TV remains available underneath it.  HA only allows this
+                # registry flag to be set as a user hide, which is exactly
+                # what we need for the app-managed composition.
+                await self.ha.update_entity_registry(selected_entity_id, hidden_by="user")
+            except HomeAssistantError:
+                if strict:
+                    raise
+                self.record_error("Não foi possível ocultar a entidade base da TV composta")
             if composed_entity_id == DEFAULT_COMPOSED_ENTITY_ID:
                 values["tv_composed_entity_id"] = selected_entity_id.removesuffix("_base")
                 changed = True
@@ -383,16 +533,42 @@ class Runtime:
                 except HomeAssistantError:
                     if strict:
                         raise
+            if not values.get("tv_original_source_list"):
+                try:
+                    base_state = await self.ha.get_state(selected_entity_id)
+                    attributes = base_state.get("attributes", {}) if isinstance(base_state, dict) else {}
+                    sources = normalize_source_list(attributes.get("source_list"))
+                    if sources:
+                        values["tv_original_source_list"] = sources
+                        changed = True
+                except HomeAssistantError:
+                    if strict:
+                        raise
+            if not values.get("tv_original_friendly_name"):
+                try:
+                    base_state = await self.ha.get_state(selected_entity_id)
+                    attributes = base_state.get("attributes", {}) if isinstance(base_state, dict) else {}
+                    current_name = str(attributes.get("friendly_name") or "").strip()
+                    if current_name.endswith(" — Base"):
+                        current_name = current_name[: -len(" — Base")].rstrip()
+                    if current_name:
+                        values["tv_original_friendly_name"] = current_name
+                        changed = True
+                except HomeAssistantError:
+                    if strict:
+                        raise
             return AppConfig.model_validate(values), changed
 
         try:
             state = await self.ha.get_state(selected_entity_id)
             registry = await self.ha.get_entity_registry(selected_entity_id)
             attributes = state.get("attributes", {}) if isinstance(state, dict) else {}
-            friendly_name = str(attributes.get("friendly_name") or "").strip()
+            original_friendly_name = str(attributes.get("friendly_name") or "").strip()
+            original_sources = normalize_source_list(attributes.get("source_list"))
             configured_name = config.tv_friendly_name.strip()
-            if not friendly_name:
-                friendly_name = selected_entity_id.split(".", 1)[-1].replace("_", " ").title()
+            if not original_friendly_name:
+                original_friendly_name = selected_entity_id.split(".", 1)[-1].replace("_", " ").title()
+            friendly_name = original_friendly_name
             if configured_name and configured_name.casefold() != "flap de giro tecnohead":
                 friendly_name = configured_name
 
@@ -402,6 +578,7 @@ class Runtime:
                 name=f"{friendly_name} — Base",
                 new_entity_id=new_base_entity_id,
                 area_id=str(registry.get("area_id")) if registry.get("area_id") else None,
+                hidden_by="user",
             )
         except HomeAssistantError:
             if strict:
@@ -415,7 +592,9 @@ class Runtime:
                 "tv_entity_id": new_base_entity_id,
                 "tv_composed_entity_id": selected_entity_id,
                 "tv_friendly_name": friendly_name,
+                "tv_original_friendly_name": original_friendly_name,
                 "tv_area_id": str(registry.get("area_id")) if registry.get("area_id") else None,
+                "tv_original_source_list": original_sources,
             }
         )
         return AppConfig.model_validate(values), True
@@ -944,7 +1123,13 @@ class Runtime:
         if not self.ha.enabled:
             return []
         try:
-            excluded = {DEFAULT_COMPOSED_ENTITY_ID, self.config.tv_composed_entity_id}
+            # The generated default entity is never a valid source.  The
+            # selected original entity is excluded only while composition is
+            # active; after disabling, it has been restored and must be
+            # selectable again.
+            excluded = {DEFAULT_COMPOSED_ENTITY_ID}
+            if self.config.tv_enabled:
+                excluded.update({self.config.tv_composed_entity_id, self.config.tv_entity_id})
             return [item for item in await self.ha.list_media_players() if item.get("entity_id") not in excluded]
         except HomeAssistantError as exc:
             self.record_error(str(exc))

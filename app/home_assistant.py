@@ -10,6 +10,9 @@ import urllib.request
 from urllib.parse import urlsplit, urlunsplit
 from typing import Any
 
+
+_UNSET = object()
+
 try:
     import websockets
 except ImportError:  # pragma: no cover
@@ -79,6 +82,11 @@ class HomeAssistantClient:
 
         return await self.call_service("universal", "reload")
 
+    async def reload_input_selects(self) -> Any:
+        """Apply the app-managed input_select YAML immediately."""
+
+        return await self.call_service("input_select", "reload")
+
     def _websocket_url(self) -> str:
         parsed = urlsplit(self.base_url)
         scheme = "wss" if parsed.scheme == "https" else "ws"
@@ -138,7 +146,7 @@ class HomeAssistantClient:
         name: str | None = None,
         new_entity_id: str | None = None,
         area_id: str | None = None,
-        hidden_by: str | None = None,
+        hidden_by: str | None | object = _UNSET,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "type": "config/entity_registry/update",
@@ -150,7 +158,7 @@ class HomeAssistantClient:
             payload["new_entity_id"] = new_entity_id
         if area_id is not None:
             payload["area_id"] = area_id
-        if hidden_by is not None:
+        if hidden_by is not _UNSET:
             payload["hidden_by"] = hidden_by
         result = await self._websocket_command(payload)
         return result if isinstance(result, dict) else {}
