@@ -96,6 +96,8 @@ def test_universal_media_player_renders_full_tv_controls() -> None:
 
     assert 'name: "TV Piscina"' in rendered
     assert 'entity_id: "media_player.tv_piscina_base"' in rendered
+    assert 'volume_level: "media_player.tv_piscina_base|volume_level"' in rendered
+    assert 'source_list: "select.flap_giro_tecnohead_preset|options"' in rendered
     for command in (
         "turn_on",
         "turn_off",

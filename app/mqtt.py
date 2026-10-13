@@ -115,7 +115,7 @@ class MqttBridge:
             "name": friendly_name,
             "manufacturer": "Tecnohead",
             "model": "Flap de Giro",
-            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.25"),
+            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.26"),
         }
         # The composite TV is managed by Home Assistant's Universal Media
         # Player YAML, which the app creates and reloads automatically. Clear

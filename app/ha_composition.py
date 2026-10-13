@@ -117,19 +117,19 @@ def render_universal_media_player(
         option: "{{{{ source }}}}"
   attributes:
     state: {base}
-    volume_level: {base}|volume_level
-    is_volume_muted: {base}|is_volume_muted
+    volume_level: {_yaml_string(f"{base_entity_id}|volume_level")}
+    is_volume_muted: {_yaml_string(f"{base_entity_id}|is_volume_muted")}
     source: {preset_select}
-    source_list: {preset_select}|options
-    media_title: {base}|media_title
-    media_artist: {base}|media_artist
-    media_album_name: {base}|media_album_name
-    media_content_id: {base}|media_content_id
-    media_content_type: {base}|media_content_type
-    media_duration: {base}|media_duration
-    media_position: {base}|media_position
-    media_position_updated_at: {base}|media_position_updated_at
-    entity_picture: {base}|entity_picture
+    source_list: {_yaml_string(f"{preset_select_entity_id}|options")}
+    media_title: {_yaml_string(f"{base_entity_id}|media_title")}
+    media_artist: {_yaml_string(f"{base_entity_id}|media_artist")}
+    media_album_name: {_yaml_string(f"{base_entity_id}|media_album_name")}
+    media_content_id: {_yaml_string(f"{base_entity_id}|media_content_id")}
+    media_content_type: {_yaml_string(f"{base_entity_id}|media_content_type")}
+    media_duration: {_yaml_string(f"{base_entity_id}|media_duration")}
+    media_position: {_yaml_string(f"{base_entity_id}|media_position")}
+    media_position_updated_at: {_yaml_string(f"{base_entity_id}|media_position_updated_at")}
+    entity_picture: {_yaml_string(f"{base_entity_id}|entity_picture")}
 '''
 
 

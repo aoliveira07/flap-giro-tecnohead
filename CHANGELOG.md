@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-alpha.26
+
+- Corrige o YAML automático do Media Player Universal, protegendo com aspas os atributos que usam `entidade|atributo`.
+- Restaura a exposição automática dos controles de energia, volume e reprodução da TV composta.
+
 ## 0.1.0-alpha.25
 
 - O App passa a criar e manter automaticamente o Media Player Universal no Home Assistant, incluindo os comandos de energia, volume, reprodução e presets.
