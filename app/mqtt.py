@@ -109,35 +109,19 @@ class MqttBridge:
         base = self.base
         snapshot = await self.state_snapshot()
         config = snapshot.get("config", {})
-        composed_entity_id = str(config.get("tv_composed_entity_id") or "media_player.flap_giro_tecnohead")
-        domain, _, object_id = composed_entity_id.partition(".")
-        if domain != "media_player" or not object_id:
-            domain, object_id = "media_player", base
         friendly_name = str(config.get("tv_friendly_name") or "Flap de Giro Tecnohead")
         device = {
             "identifiers": [base],
             "name": friendly_name,
             "manufacturer": "Tecnohead",
             "model": "Flap de Giro",
-            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.24"),
+            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.25"),
         }
-        media = {
-            "name": friendly_name,
-            "unique_id": base,
-            "object_id": object_id,
-            "default_entity_id": composed_entity_id,
-            "device_class": "tv",
-            "command_topic": f"{base}/media/set",
-            "state_topic": f"{base}/media/state",
-            "availability_topic": f"{base}/availability",
-            "source_topic": f"{base}/media/source",
-            "source_list": [item["name"] for item in snapshot.get("presets", [])],
-            "json_attributes_topic": f"{base}/attributes",
-            "payload_on": "ON",
-            "payload_off": "OFF",
-            "device": device,
-        }
-        await self._publish(client, f"{self.discovery_prefix}/{domain}/{base}/config", media)
+        # The composite TV is managed by Home Assistant's Universal Media
+        # Player YAML, which the app creates and reloads automatically. Clear
+        # the old retained MQTT media_player discovery payload so it cannot
+        # collide with the Universal entity or hide its native controls.
+        await self._publish(client, f"{self.discovery_prefix}/media_player/{base}/config", "")
         sensors = {
             "position": ("sensor", "Posição do Flap", "%", "measurement"),
             "flap_state": ("sensor", "Estado do Flap", None, None),

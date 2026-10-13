@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.home_assistant import HomeAssistantClient
+from app.ha_composition import HomeAssistantCompositionFiles, render_universal_media_player
 from app.itach import ItachDriver, ItachError
 from app.models import AppConfig
 from app.mqtt import MqttBridge
@@ -84,6 +85,63 @@ def test_defaults_capture_installation_constraints() -> None:
     assert config.close_interval_seconds == 1
     assert config.home_direction == "left"
     assert config.ir_repeats == 3
+
+
+def test_universal_media_player_renders_full_tv_controls() -> None:
+    rendered = render_universal_media_player(
+        composed_entity_id="media_player.tv_piscina",
+        base_entity_id="media_player.tv_piscina_base",
+        friendly_name="TV Piscina",
+    )
+
+    assert 'name: "TV Piscina"' in rendered
+    assert 'entity_id: "media_player.tv_piscina_base"' in rendered
+    for command in (
+        "turn_on",
+        "turn_off",
+        "volume_set",
+        "volume_up",
+        "volume_down",
+        "volume_mute",
+        "media_play",
+        "media_pause",
+        "media_stop",
+        "media_previous_track",
+        "media_next_track",
+        "play_media",
+        "select_source",
+    ):
+        assert f"    {command}:" in rendered
+    assert 'entity_id: "select.flap_giro_tecnohead_preset"' in rendered
+
+
+def test_home_assistant_composition_files_are_idempotent_and_preserve_other_players(tmp_path: Path) -> None:
+    (tmp_path / "configuration.yaml").write_text("default_config:\n", encoding="utf-8")
+    (tmp_path / "media_players.yaml").write_text(
+        "- platform: universal\n  name: Outra TV\n  unique_id: outra_tv\n",
+        encoding="utf-8",
+    )
+
+    manager = HomeAssistantCompositionFiles(tmp_path)
+    update = manager.ensure(
+        composed_entity_id="media_player.tv_piscina",
+        base_entity_id="media_player.tv_piscina_base",
+        friendly_name="TV Piscina",
+    )
+    assert update.changed is True
+    assert update.include_changed is True
+    media = (tmp_path / "media_players.yaml").read_text(encoding="utf-8")
+    assert "Outra TV" in media
+    assert "TV Piscina" in media
+    assert "media_player.tv_piscina_base" in media
+    assert "media_player: !include media_players.yaml" in (tmp_path / "configuration.yaml").read_text(encoding="utf-8")
+
+    second = manager.ensure(
+        composed_entity_id="media_player.tv_piscina",
+        base_entity_id="media_player.tv_piscina_base",
+        friendly_name="TV Piscina",
+    )
+    assert second.changed is False
 
 
 def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> None:
@@ -242,19 +300,17 @@ def test_mqtt_refresh_publishes_current_preset_sources() -> None:
         bridge.connected = True
         await bridge.publish_current_state()
 
-        discovery = next(payload for topic, payload in published if topic.endswith("/media_player/flap_giro_tecnohead/config"))
+        media_discovery = next(payload for topic, payload in published if topic.endswith("/media_player/flap_giro_tecnohead/config"))
         preset_select = next(payload for topic, payload in published if topic.endswith("/select/flap_giro_tecnohead_preset/config"))
         attributes = next(payload for topic, payload in published if topic == "flap_giro_tecnohead/attributes")
         return {
-            "discovery": json.loads(discovery),
+            "media_discovery": media_discovery,
             "preset_select": json.loads(preset_select),
             "attributes": json.loads(attributes),
         }
 
     result = asyncio.run(exercise())
-    assert result["discovery"]["source_list"] == ["Cozinha", "Piscina"]
-    assert result["discovery"]["default_entity_id"] == "media_player.tv_piscina"
-    assert result["discovery"]["name"] == "TV Piscina"
+    assert result["media_discovery"] == ""
     assert result["preset_select"]["default_entity_id"] == "select.flap_giro_tecnohead_preset"
     assert result["preset_select"]["options"] == ["Cozinha", "Piscina"]
     assert result["attributes"]["source_list"] == ["Cozinha", "Piscina"]

@@ -7,6 +7,7 @@ from collections import deque
 from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable
 
+from app.ha_composition import CompositionUpdate, HomeAssistantCompositionFiles
 from app.home_assistant import HomeAssistantClient, HomeAssistantError
 from app.itach import ItachDriver, ItachError
 from app.models import AppConfig
@@ -80,6 +81,7 @@ class Runtime:
         self.state = default_state()
         self.driver = ItachDriver(self.config, self.profile)
         self.ha = ha_client or HomeAssistantClient()
+        self.ha_composition = HomeAssistantCompositionFiles()
         self.mqtt = MqttBridge(self.config.discovery_prefix, self.snapshot, self.handle_mqtt_command)
         self.started_at = time.monotonic()
         self.control_lock = asyncio.Lock()
@@ -103,6 +105,7 @@ class Runtime:
         )
         old_composed_entity_id = self.config.tv_composed_entity_id
         self.config, composition_changed = await self._ensure_composed_tv(self.config, strict=False)
+        media_player_update = await self._ensure_media_player_files(self.config, strict=False)
         if composition_changed:
             await self.database.set_json("config", self.config.model_dump())
         saved_state = await self.database.get_json("state", {})
@@ -127,6 +130,7 @@ class Runtime:
                 self.config.tv_friendly_name,
             )
         await self.mqtt.start()
+        await self._apply_media_player_update(media_player_update)
         self.composed_entity_sync_task = asyncio.create_task(
             self._composed_entity_sync_loop(), name="flap-composed-entity-sync"
         )
@@ -179,6 +183,7 @@ class Runtime:
         previous_composed_entity_id = self.config.tv_composed_entity_id
         candidate = AppConfig.model_validate(values)
         candidate, composition_changed = await self._ensure_composed_tv(candidate, strict=True)
+        media_player_update = await self._ensure_media_player_files(candidate, strict=True)
         self.config = candidate
         await self.database.set_json("config", self.config.model_dump())
         self.driver.update_config(self.config)
@@ -193,7 +198,37 @@ class Runtime:
                 self.config.tv_composed_entity_id,
                 self.config.tv_friendly_name,
             )
+        await self._apply_media_player_update(media_player_update)
         return self.config.model_dump()
+
+    async def _ensure_media_player_files(self, config: AppConfig, *, strict: bool) -> CompositionUpdate:
+        if not (config.tv_enabled and config.tv_entity_id and config.tv_composed_entity_id):
+            return CompositionUpdate()
+        try:
+            return await asyncio.to_thread(
+                self.ha_composition.ensure,
+                composed_entity_id=config.tv_composed_entity_id,
+                base_entity_id=config.tv_entity_id,
+                friendly_name=config.tv_friendly_name,
+            )
+        except (OSError, RuntimeError) as exc:
+            if strict:
+                raise HomeAssistantError(f"Não foi possível preparar os arquivos do Media Player: {exc}") from exc
+            self.record_error(f"Não foi possível preparar automaticamente o Media Player: {exc}")
+            return CompositionUpdate()
+
+    async def _apply_media_player_update(self, update: CompositionUpdate) -> None:
+        if not update.changed or not self.ha.enabled:
+            return
+        try:
+            if update.include_changed:
+                # A newly added media_player include is only discovered during a
+                # Core restart. Subsequent preset/name changes use universal.reload.
+                await self.ha.call_service("homeassistant", "restart")
+            else:
+                await self.ha.reload_universal_media_players()
+        except HomeAssistantError as exc:
+            self.record_error(f"A configuração do Media Player foi salva, mas não pôde ser recarregada: {exc}")
 
     async def _ensure_composed_tv(self, config: AppConfig, *, strict: bool) -> tuple[AppConfig, bool]:
         """Turn the selected real TV into the base of an automatic composite entity."""

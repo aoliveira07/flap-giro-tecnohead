@@ -57,13 +57,27 @@ class HomeAssistantClient:
     async def list_media_players(self) -> list[dict[str, Any]]:
         return [item for item in await self.list_states() if str(item.get("entity_id", "")).startswith("media_player.")]
 
-    async def call_service(self, domain: str, service: str, entity_id: str) -> Any:
+    async def call_service(
+        self,
+        domain: str,
+        service: str,
+        entity_id: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> Any:
+        payload = dict(data or {})
+        if entity_id:
+            payload["entity_id"] = entity_id
         return await asyncio.to_thread(
             self._request_sync,
             f"/core/api/services/{domain}/{service}",
             "POST",
-            {"entity_id": entity_id},
+            payload,
         )
+
+    async def reload_universal_media_players(self) -> Any:
+        """Apply the app-managed Universal Media Player YAML immediately."""
+
+        return await self.call_service("universal", "reload")
 
     def _websocket_url(self) -> str:
         parsed = urlsplit(self.base_url)
@@ -124,6 +138,7 @@ class HomeAssistantClient:
         name: str | None = None,
         new_entity_id: str | None = None,
         area_id: str | None = None,
+        hidden_by: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "type": "config/entity_registry/update",
@@ -135,6 +150,8 @@ class HomeAssistantClient:
             payload["new_entity_id"] = new_entity_id
         if area_id is not None:
             payload["area_id"] = area_id
+        if hidden_by is not None:
+            payload["hidden_by"] = hidden_by
         result = await self._websocket_command(payload)
         return result if isinstance(result, dict) else {}
 

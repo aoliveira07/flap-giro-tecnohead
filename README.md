@@ -1,6 +1,6 @@
 # Flap de Giro Tecnohead
 
-Repositório independente para o Home Assistant App de controle do Flap de Giro Tecnohead diretamente por um Global Caché iTach. O App mantém posição estimada por tempo, persistência, calibração HOME, presets, diagnóstico, API local e uma entidade `media_player` composta para TV/HomeKit via MQTT Discovery.
+Repositório independente para o Home Assistant App de controle do Flap de Giro Tecnohead diretamente por um Global Caché iTach. O App mantém posição estimada por tempo, persistência, calibração HOME, presets, diagnóstico, API local e uma entidade `media_player` composta para TV/HomeKit.
 
 ## Instalação
 
@@ -18,7 +18,7 @@ Preencha na tela de configuração:
 
 Selecione a entidade `media_player` real da TV somente depois que o vínculo com o Home Assistant estiver disponível. A entidade composta publica os presets como sources e espelha o estado de power da TV real; o estado mecânico do Flap aparece separadamente.
 
-O App lê automaticamente o host, porta e credenciais do serviço MQTT fornecido pelo Supervisor. Ao salvar a TV real, ela é renomeada para o sufixo `— Base`, enquanto a entidade composta mantém o ID e o cômodo da TV original.
+O App lê automaticamente o host, porta e credenciais do serviço MQTT fornecido pelo Supervisor. Ao salvar a TV real, ela é renomeada para o sufixo `— Base`, enquanto a entidade composta mantém o ID e o cômodo da TV original. A inclusão do Media Player Universal, seus comandos e o recarregamento da integração são feitos automaticamente pelo próprio App; não é necessário editar o `configuration.yaml` no Studio Code.
 
 ## Primeiro teste físico
 

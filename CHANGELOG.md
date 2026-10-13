@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.25
+
+- O App passa a criar e manter automaticamente o Media Player Universal no Home Assistant, incluindo os comandos de energia, volume, reprodução e presets.
+- Remove a descoberta MQTT duplicada do `media_player` e limpa o tópico retido legado para que a entidade composta não perca os controles nativos.
+- O App passa a ter acesso somente à configuração do Home Assistant necessária para gerar o include do Media Player, sem edição manual no Studio Code.
+
 ## 0.1.0-alpha.24
 
 - Publica os presets também como entidade MQTT `select`, com opções atualizadas dinamicamente e ID estável para uso pelo Media Player Universal do Home Assistant.
@@ -132,4 +138,10 @@
 - API versionada, diagnóstico e interface Ingress mobile-first.
 - MQTT Discovery para controles, sensores e entidade de televisão composta.
 - Vínculo opcional com TV real do Home Assistant e reconciliação de estado.
+
+## 0.1.0-alpha.25
+
+- O App passa a criar e manter automaticamente o Media Player Universal no Home Assistant, incluindo os comandos de energia, volume, reprodução e presets.
+- Remove a descoberta MQTT duplicada do `media_player` e limpa o tópico retido legado para que a entidade composta não perca os controles nativos.
+- O App passa a ter acesso somente à configuração do Home Assistant necessária para gerar o include do Media Player, sem edição manual no Studio Code.
 
