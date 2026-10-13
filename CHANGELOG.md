@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.22
+
+- ao selecionar uma TV real, renomeia a entidade física para `*_base`;
+- cria a entidade `media_player` composta usando o mesmo nome e identificador original da TV;
+- mantém a TV física como base de energia e publica os presets na entidade composta.
+
 ## 0.1.0-alpha.21
 
 - removeu os controles de ligar/desligar da TV composta no aplicativo;

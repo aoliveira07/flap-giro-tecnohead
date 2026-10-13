@@ -16,7 +16,7 @@ HOME abre o Flap, gira no sentido configurado durante o curso total mais a marge
 
 ## Presets e TV composta
 
-Os presets iniciais são Cozinha (30%), Poltronas (65%) e Piscina (100%), mas são dados persistidos e editáveis. MQTT Discovery publica `media_player.flap_giro_tecnohead` com `device_class: tv`, `source/source_list`, `TURN_ON` e `TURN_OFF`.
+Os presets iniciais são Cozinha (30%), Poltronas (65%) e Piscina (100%), mas são dados persistidos e editáveis. Ao selecionar uma TV real na configuração, o App renomeia a entidade física para o sufixo `_base` e cria a entidade MQTT composta usando o identificador e o nome originais da TV. A entidade composta publica `source/source_list`, `TURN_ON` e `TURN_OFF`; a entidade `_base` continua sendo a fonte real de energia e estado.
 
 O `on/off` da TV composta é derivado exclusivamente do estado real da TV vinculada no Home Assistant. `unavailable` e `unknown` não são convertidos artificialmente para ON/OFF. A TV pode estar OFF enquanto o Flap ainda retorna a 0% ou fecha.
 

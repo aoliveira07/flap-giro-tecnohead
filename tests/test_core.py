@@ -13,7 +13,7 @@ from app.models import AppConfig
 from app.mqtt import MqttBridge
 from app.protocol import parse_pronto, pronto_frequency_hz, pronto_to_itach
 from app.profile import load_profile
-from app.runtime import Runtime
+from app.runtime import Runtime, base_entity_id
 
 
 PROFILE_PATH = Path(__file__).parents[1] / "app" / "profile.json"
@@ -84,6 +84,42 @@ def test_defaults_capture_installation_constraints() -> None:
     assert config.close_interval_seconds == 1
     assert config.home_direction == "left"
     assert config.ir_repeats == 3
+
+
+def test_composed_tv_preparation_moves_real_entity_to_base(tmp_path: Path) -> None:
+    class FakeHomeAssistant:
+        enabled = True
+
+        def __init__(self) -> None:
+            self.updates: list[tuple[str, dict[str, str]]] = []
+
+        async def get_state(self, entity_id: str) -> dict:
+            assert entity_id == "media_player.tv_piscina"
+            return {"attributes": {"friendly_name": "TV Piscina"}}
+
+        async def update_entity_registry(self, entity_id: str, **changes: str) -> dict:
+            self.updates.append((entity_id, changes))
+            return {}
+
+    async def exercise() -> tuple[AppConfig, list[tuple[str, dict[str, str]]]]:
+        ha = FakeHomeAssistant()
+        runtime = Runtime(tmp_path, "0.1.0-test", ha_client=ha)
+        candidate = AppConfig(tv_enabled=True, tv_entity_id="media_player.tv_piscina")
+        result, changed = await runtime._ensure_composed_tv(candidate, strict=True)
+        assert changed is True
+        return result, ha.updates
+
+    config, updates = asyncio.run(exercise())
+    assert base_entity_id("media_player.tv_piscina") == "media_player.tv_piscina_base"
+    assert config.tv_entity_id == "media_player.tv_piscina_base"
+    assert config.tv_composed_entity_id == "media_player.tv_piscina"
+    assert config.tv_friendly_name == "TV Piscina"
+    assert updates == [
+        (
+            "media_player.tv_piscina",
+            {"name": "TV Piscina — Base", "new_entity_id": "media_player.tv_piscina_base"},
+        )
+    ]
 
 
 def test_itach_protocol_repeat_has_safe_minimum_for_legacy_config() -> None:

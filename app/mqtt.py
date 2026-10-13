@@ -108,17 +108,23 @@ class MqttBridge:
     async def _publish_discovery(self, client: Any) -> None:
         base = self.base
         snapshot = await self.state_snapshot()
+        config = snapshot.get("config", {})
+        composed_entity_id = str(config.get("tv_composed_entity_id") or "media_player.flap_giro_tecnohead")
+        domain, _, object_id = composed_entity_id.partition(".")
+        if domain != "media_player" or not object_id:
+            domain, object_id = "media_player", base
+        friendly_name = str(config.get("tv_friendly_name") or "Flap de Giro Tecnohead")
         device = {
             "identifiers": [base],
-            "name": "Flap de Giro Tecnohead",
+            "name": friendly_name,
             "manufacturer": "Tecnohead",
             "model": "Flap de Giro",
-            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.21"),
+            "sw_version": os.getenv("APP_VERSION", "0.1.0-alpha.22"),
         }
         media = {
-            "name": "Flap de Giro Tecnohead",
+            "name": friendly_name,
             "unique_id": base,
-            "object_id": base,
+            "object_id": object_id,
             "device_class": "tv",
             "command_topic": f"{base}/media/set",
             "state_topic": f"{base}/media/state",
@@ -130,7 +136,7 @@ class MqttBridge:
             "payload_off": "OFF",
             "device": device,
         }
-        await self._publish(client, f"{self.discovery_prefix}/media_player/{base}/config", media)
+        await self._publish(client, f"{self.discovery_prefix}/{domain}/{base}/config", media)
         sensors = {
             "position": ("sensor", "Posição do Flap", "%", "measurement"),
             "flap_state": ("sensor", "Estado do Flap", None, None),

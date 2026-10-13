@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response
 
+from app.home_assistant import HomeAssistantError
 from app.models import ConfigPatch, PositionRequest, PresetCreate, PresetUpdate
 from app.runtime import Runtime
 
@@ -35,6 +36,8 @@ async def update_config(payload: ConfigPatch, request: Request):
         return await runtime_from(request).save_config(payload.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except HomeAssistantError as exc:
+        raise HTTPException(status_code=503, detail=f"Não foi possível preparar a TV composta: {exc}") from exc
 
 
 @router.post("/open")

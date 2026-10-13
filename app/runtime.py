@@ -21,9 +21,19 @@ DEFAULT_PRESETS = [
     {"name": "Poltronas", "position": 65},
     {"name": "Piscina", "position": 100},
 ]
+DEFAULT_COMPOSED_ENTITY_ID = "media_player.flap_giro_tecnohead"
 
 MOVEMENT_STATES = {"OPENING", "CLOSING", "MOVING"}
 TV_ON_STATES = {"on", "playing", "idle", "paused", "buffering", "media_playing", "media_paused"}
+
+
+def base_entity_id(entity_id: str) -> str:
+    domain, separator, object_id = entity_id.partition(".")
+    if not separator:
+        return f"{entity_id}_base"
+    if object_id.endswith("_base"):
+        return entity_id
+    return f"{domain}.{object_id}_base"
 
 def default_state() -> dict[str, Any]:
     return {
@@ -89,6 +99,10 @@ class Runtime:
                 **(saved_config or {}),
             }
         )
+        old_composed_entity_id = self.config.tv_composed_entity_id
+        self.config, composition_changed = await self._ensure_composed_tv(self.config, strict=False)
+        if composition_changed:
+            await self.database.set_json("config", self.config.model_dump())
         saved_state = await self.database.get_json("state", {})
         self.state = {**default_state(), **(saved_state or {})}
         if self.state.get("movement_in_progress"):
@@ -104,6 +118,12 @@ class Runtime:
         self.state["tv_entity_id"] = self.config.tv_entity_id
         self.driver.update_config(self.config)
         self.mqtt.discovery_prefix = self.config.discovery_prefix
+        if composition_changed:
+            await self._rename_existing_composed_entity(
+                old_composed_entity_id,
+                self.config.tv_composed_entity_id,
+                self.config.tv_friendly_name,
+            )
         await self.mqtt.start()
         if self.config.tv_enabled and self.config.tv_entity_id and self.ha.enabled:
             self.tv_task = asyncio.create_task(self._tv_reconcile_loop(), name="flap-tv-reconcile")
@@ -134,6 +154,7 @@ class Runtime:
         return {
             "app_version": self.version,
             "state": dict(self.state),
+            "config": self.config.model_dump(),
             "presets": await self.database.list_presets(),
             "itach": self.driver.status(),
             "mqtt": self.mqtt.status(),
@@ -147,13 +168,82 @@ class Runtime:
         values.update({key: value for key, value in patch.items() if value is not None})
         if values.get("tv_entity_id") == "":
             values["tv_entity_id"] = None
-        self.config = AppConfig.model_validate(values)
+        previous_composed_entity_id = self.config.tv_composed_entity_id
+        candidate = AppConfig.model_validate(values)
+        candidate, composition_changed = await self._ensure_composed_tv(candidate, strict=True)
+        self.config = candidate
         await self.database.set_json("config", self.config.model_dump())
         self.driver.update_config(self.config)
         self.mqtt.discovery_prefix = self.config.discovery_prefix
         self.state["tv_entity_id"] = self.config.tv_entity_id
         await self.persist_state()
+        await self.mqtt.publish_current_state()
+        if composition_changed:
+            await self._rename_existing_composed_entity(
+                previous_composed_entity_id,
+                self.config.tv_composed_entity_id,
+                self.config.tv_friendly_name,
+            )
         return self.config.model_dump()
+
+    async def _ensure_composed_tv(self, config: AppConfig, *, strict: bool) -> tuple[AppConfig, bool]:
+        """Turn the selected real TV into the base of an automatic composite entity."""
+        if not config.tv_enabled or not config.tv_entity_id or not self.ha.enabled:
+            return config, False
+
+        selected_entity_id = config.tv_entity_id
+        composed_entity_id = config.tv_composed_entity_id or DEFAULT_COMPOSED_ENTITY_ID
+        if selected_entity_id == composed_entity_id or selected_entity_id == DEFAULT_COMPOSED_ENTITY_ID:
+            raise ValueError("Selecione a entidade real da TV, não a entidade composta do Flap")
+
+        # A previously migrated entity is already the physical/base entity.
+        if selected_entity_id.endswith("_base") and selected_entity_id != composed_entity_id:
+            values = config.model_dump()
+            if composed_entity_id == DEFAULT_COMPOSED_ENTITY_ID:
+                values["tv_composed_entity_id"] = selected_entity_id.removesuffix("_base")
+                config = AppConfig.model_validate(values)
+            return config, False
+
+        try:
+            state = await self.ha.get_state(selected_entity_id)
+            attributes = state.get("attributes", {}) if isinstance(state, dict) else {}
+            friendly_name = str(attributes.get("friendly_name") or "").strip()
+            configured_name = config.tv_friendly_name.strip()
+            if not friendly_name:
+                friendly_name = selected_entity_id.split(".", 1)[-1].replace("_", " ").title()
+            if configured_name and configured_name.casefold() != "flap de giro tecnohead":
+                friendly_name = configured_name
+
+            new_base_entity_id = base_entity_id(selected_entity_id)
+            await self.ha.update_entity_registry(
+                selected_entity_id,
+                name=f"{friendly_name} — Base",
+                new_entity_id=new_base_entity_id,
+            )
+        except HomeAssistantError:
+            if strict:
+                raise
+            self.record_error("Não foi possível preparar automaticamente a entidade composta da TV")
+            return config, False
+
+        values = config.model_dump()
+        values.update(
+            {
+                "tv_entity_id": new_base_entity_id,
+                "tv_composed_entity_id": selected_entity_id,
+                "tv_friendly_name": friendly_name,
+            }
+        )
+        return AppConfig.model_validate(values), True
+
+    async def _rename_existing_composed_entity(self, old_entity_id: str, new_entity_id: str, name: str) -> None:
+        if not old_entity_id or old_entity_id == new_entity_id:
+            return
+        try:
+            await self.ha.update_entity_registry(old_entity_id, name=name, new_entity_id=new_entity_id)
+        except HomeAssistantError as exc:
+            if "not found" not in str(exc).casefold() and "não encontrado" not in str(exc).casefold():
+                raise
 
     async def _send_ir(
         self,
@@ -610,7 +700,8 @@ class Runtime:
         if not self.ha.enabled:
             return []
         try:
-            return await self.ha.list_media_players()
+            excluded = {DEFAULT_COMPOSED_ENTITY_ID, self.config.tv_composed_entity_id}
+            return [item for item in await self.ha.list_media_players() if item.get("entity_id") not in excluded]
         except HomeAssistantError as exc:
             self.record_error(str(exc))
             return []
